@@ -93,9 +93,10 @@ There's no special tooling — just discipline:
 
 **Track A (Stages 1-4) complete for genuine data.** Synthetic clones still needed (no TTS API key yet) — once added, `features.py`/`fingerprint.py` pick them up automatically with no code changes. Handing off to Track B (Stage 5+) against the current `data/features/features.csv`.
 
-**Stage 5 — Detection model (primary)** — [unclaimed]
-- [ ] One-Class SVM trained on genuine fingerprints, scored against held-out genuine+synthetic clips
-- [ ] Implement in `src/models/oneclass.py`
+**Stage 5 — Detection model (primary)** — owner: Claude session (Mary)
+- [x] One-Class SVM trained on genuine fingerprints, scored against held-out genuine+synthetic clips — per-speaker model, trained on that speaker's genuine per-clip features (11-dim, standardized)
+- [x] Implement in `src/models/oneclass.py`
+- **Known limitation**: only 10 genuine clips/speaker (9 per leave-one-out fold) in an 11-dim feature space is thin for learning a robust boundary. RBF kernel badly overfit (0-20% self-acceptance on held-out genuine); switched default to `linear` kernel, which does better (50-60%) but is still noisy at this sample size. Did **not** grid-search nu/gamma against this same tiny holdout — that would just fit noise. Real validation is Stage 7 once synthetic clips exist as the actual anomaly class; if scores there are poor, revisit with more enrollment clips before touching hyperparameters again.
 
 **Stage 5b — Stretch: supervised model** — [unclaimed]
 - [ ] SVM/RF trained on labeled genuine+synthetic features

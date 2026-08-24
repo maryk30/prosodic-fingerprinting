@@ -19,6 +19,7 @@ data/synthetic/**/*.m4a
 data/features/*.csv
 data/features/*.parquet
 data/features/fingerprints/
+data/features/models/
 
 # Notebooks checkpoints
 .ipynb_checkpoints/
