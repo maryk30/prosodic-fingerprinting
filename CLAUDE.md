@@ -78,16 +78,16 @@ There's no special tooling — just discipline:
 - [x] Implement in `src/preprocessing.py` — tested against all 20 genuine clips; also added `discover_clips()` to skip stray outlier recordings (>15s) rather than silently breaking VAD/feature stages downstream
 
 **Stage 3 — Prosodic feature extraction** — owner: Claude session (Mary)
-- [ ] F0 contour (librosa pYIN), speaker-relative semitone normalization
-- [ ] Energy (RMS) trajectory
-- [ ] Speaking rate proxy
-- [ ] Pause statistics (count/mean/variance) from VAD output
-- [ ] Rhythm metric (nPVI)
-- [ ] Jitter/shimmer via Parselmouth
-- [ ] Implement in `src/features.py`, write `data/features/features.csv`
-- [ ] Finalize the data contract section above once schema is real
+- [x] F0 contour (librosa pYIN), speaker-relative semitone normalization — reference = median voiced F0 from each speaker's *genuine* clips only
+- [x] Energy (RMS) trajectory (mean/std via librosa.feature.rms)
+- [x] Speaking rate proxy (onset count / speech-time, via librosa.onset.onset_detect)
+- [x] Pause statistics (count/mean/variance) from VAD output — internal pauses only (leading/trailing silence and <50ms VAD noise excluded)
+- [x] Rhythm metric (nPVI) — computed over inter-onset intervals as a syllable-nucleus proxy (no forced alignment available)
+- [x] Jitter/shimmer via Parselmouth (local jitter/shimmer, periodic point process)
+- [x] Implement in `src/features.py`, write `data/features/features.csv` — 20 rows (10 krishiv + 10 mary genuine, no NaNs); synthetic rows will append automatically once Stage 1's TTS clones land in `data/synthetic/<speaker>/<tts_system>/`
+- [x] Data contract confirmed accurate — no schema changes needed
 
-**Stage 4 — Fingerprint construction** — [unclaimed]
+**Stage 4 — Fingerprint construction** — owner: Claude session (Mary)
 - [ ] Per-speaker statistical summary vector (mean/var/skew) from enrollment clips
 - [ ] Implement in `src/fingerprint.py`
 
