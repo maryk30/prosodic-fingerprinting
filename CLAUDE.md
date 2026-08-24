@@ -106,10 +106,12 @@ There's no special tooling — just discipline:
 - [ ] ECAPA-TDNN (SpeechBrain pretrained) cosine-similarity baseline
 - [ ] Implement in `src/baseline_spectral.py`
 
-**Stage 7 — Evaluation** — [unclaimed]
-- [ ] EER, ROC-AUC, accuracy/precision/recall/F1 in `notebooks/results.ipynb`
-- [ ] ROC curve plot, ablation if time permits
-- [ ] Implement metric helpers in `src/eval.py`
+**Stage 7 — Evaluation** — owner: Claude session (Mary)
+- [x] EER, ROC-AUC, accuracy/precision/recall/F1 in `notebooks/results.ipynb`
+- [x] ROC curve plot — wired up, gracefully no-ops with a clear message until synthetic clips exist (only one class = genuine right now, so ROC-AUC/EER report as unavailable rather than a bogus number)
+- [x] Implement metric helpers in `src/eval.py` — `evaluate()` + `compute_eer()`, unit-sanity-checked against hand-built two-class scores
+- **Real numbers still pending Stage 1's synthetic clones.** Current notebook only shows genuine-only diagnostics (feature distributions, leave-one-out self-consistency: krishiv 60%, mary 50% — small-sample noise, not tuned). Re-run `python src/features.py` then the notebook once synthetic data lands; no code changes needed.
+- Ablation: not attempted — not enough signal to make it meaningful without synthetic data first.
 
 **Stage 8 — CLI deliverable** — owner: Claude session (Mary)
 - [x] `cli.py enroll <speaker> <clip1> <clip2> ...` builds and saves a fingerprint — also updates `features.csv` (replacing that speaker's prior genuine rows) and trains/saves their OC-SVM model
