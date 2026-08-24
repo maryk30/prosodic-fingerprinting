@@ -12,8 +12,10 @@ venv/
 # Audio data (large / private — not committed)
 data/genuine/**/*.wav
 data/genuine/**/*.mp3
+data/genuine/**/*.m4a
 data/synthetic/**/*.wav
 data/synthetic/**/*.mp3
+data/synthetic/**/*.m4a
 data/features/*.csv
 data/features/*.parquet
 

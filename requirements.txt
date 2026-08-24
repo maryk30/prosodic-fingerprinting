@@ -1,6 +1,7 @@
 librosa>=0.10
 praat-parselmouth>=0.4
 webrtcvad>=2.0
+soundfile>=0.12
 numpy
 scipy
 pandas

@@ -67,13 +67,13 @@ There's no special tooling — just discipline:
 - [x] git init, .gitignore, requirements.txt, folder skeleton, README, CLAUDE.md
 - [ ] Push initial commit to https://github.com/maryk30/prosodic-fingerprinting.git — [in progress]
 
-**Stage 1 — Data collection** — [unclaimed]
-- [ ] Record 5-10 short (3-10s) genuine clips for 1-2 enrolled speakers (team members)
-- [ ] Generate synthetic clones of the same speakers via free-tier TTS API
-- [ ] Organize into `data/genuine/<speaker>/` and `data/synthetic/<speaker>/<tts_system>/`
+**Stage 1 — Data collection** — owner: Claude session (Mary)
+- [x] Record 5-10 short (3-10s) genuine clips for 1-2 enrolled speakers (team members) — 10 clips each for `krishiv` and `mary` in `data/genuine/<speaker>/` (m4a)
+- [ ] Generate synthetic clones of the same speakers via free-tier TTS API — deferred, no API key yet; revisit once available
+- [x] Organize into `data/genuine/<speaker>/` and `data/synthetic/<speaker>/<tts_system>/` — genuine done; synthetic folder pending clones above
 
-**Stage 2 — Preprocessing** — [unclaimed]
-- [ ] VAD + segmentation (webrtcvad or pyannote VAD) — keep pause info, don't discard silence
+**Stage 2 — Preprocessing** — owner: Claude session (Mary)
+- [ ] VAD + segmentation (webrtcvad or pyannote VAD) — keep pause info, don't discard silence — [in progress]
 - [ ] Loudness normalization
 - [ ] Implement in `src/preprocessing.py`
 
