@@ -162,20 +162,21 @@ def extract_raw_features(
     )
 
 
+def speaker_f0_reference_hz(raw_clips: list[RawClipFeatures]) -> float:
+    """Median voiced F0 (Hz) across a speaker's genuine clips — their own
+    pitch register, used as the 0-semitone reference for all their clips
+    (genuine and synthetic alike)."""
+    genuine_f0 = np.concatenate(
+        [r.voiced_f0_hz for r in raw_clips if r.label == "genuine" and len(r.voiced_f0_hz)]
+    )
+    return float(np.median(genuine_f0)) if len(genuine_f0) else float("nan")
+
+
 def _speaker_f0_reference_hz(raw_by_speaker: dict[str, list[RawClipFeatures]]) -> dict[str, float]:
-    """Median voiced F0 (Hz) per speaker, computed only from their genuine
-    clips — this is the enrolled speaker's own pitch register, used as the
-    0-semitone reference for both genuine and synthetic clips of theirs."""
-    refs = {}
-    for speaker, rows in raw_by_speaker.items():
-        genuine_f0 = np.concatenate(
-            [r.voiced_f0_hz for r in rows if r.label == "genuine" and len(r.voiced_f0_hz)]
-        )
-        refs[speaker] = float(np.median(genuine_f0)) if len(genuine_f0) else float("nan")
-    return refs
+    return {speaker: speaker_f0_reference_hz(rows) for speaker, rows in raw_by_speaker.items()}
 
 
-def _to_row(r: RawClipFeatures, f0_ref_hz: float) -> dict:
+def to_row(r: RawClipFeatures, f0_ref_hz: float) -> dict:
     if len(r.voiced_f0_hz) and f0_ref_hz > 0:
         semitones = 12 * np.log2(r.voiced_f0_hz / f0_ref_hz)
         f0_mean, f0_std = float(np.mean(semitones)), float(np.std(semitones))
@@ -201,7 +202,9 @@ def _to_row(r: RawClipFeatures, f0_ref_hz: float) -> dict:
     }
 
 
-def build_features_table(genuine_root: str, synthetic_root: str | None = None) -> list[dict]:
+def build_features_table(
+    genuine_root: str, synthetic_root: str | None = None
+) -> tuple[list[dict], dict[str, float]]:
     raw_by_speaker: dict[str, list[RawClipFeatures]] = {}
 
     for speaker_dir in sorted(glob.glob(f"{genuine_root}/*/")):
@@ -223,19 +226,28 @@ def build_features_table(genuine_root: str, synthetic_root: str | None = None) -
 
     f0_refs = _speaker_f0_reference_hz(raw_by_speaker)
     rows = [
-        _to_row(r, f0_refs[speaker])
+        to_row(r, f0_refs[speaker])
         for speaker, clips in raw_by_speaker.items()
         for r in clips
     ]
-    return rows
+    return rows, f0_refs
+
+
+F0_REFERENCE_PATH = "data/features/f0_reference.json"
 
 
 if __name__ == "__main__":
+    import json
+
     import pandas as pd
 
-    rows = build_features_table("data/genuine", "data/synthetic")
+    rows, f0_refs = build_features_table("data/genuine", "data/synthetic")
     df = pd.DataFrame(rows, columns=FEATURE_COLUMNS)
     out_path = "data/features/features.csv"
     df.to_csv(out_path, index=False)
     print(f"wrote {len(df)} rows to {out_path}")
     print(df)
+
+    with open(F0_REFERENCE_PATH, "w") as f:
+        json.dump(f0_refs, f, indent=2)
+    print(f"wrote per-speaker f0 reference (Hz) to {F0_REFERENCE_PATH}")

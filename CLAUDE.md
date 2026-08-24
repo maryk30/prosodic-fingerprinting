@@ -111,9 +111,9 @@ There's no special tooling — just discipline:
 - [ ] ROC curve plot, ablation if time permits
 - [ ] Implement metric helpers in `src/eval.py`
 
-**Stage 8 — CLI deliverable** — [unclaimed]
-- [ ] `cli.py enroll <speaker> <clip1> <clip2> ...` builds and saves a fingerprint
-- [ ] `cli.py score <speaker> <clip>` prints genuine/synthetic + confidence score
+**Stage 8 — CLI deliverable** — owner: Claude session (Mary)
+- [x] `cli.py enroll <speaker> <clip1> <clip2> ...` builds and saves a fingerprint — also updates `features.csv` (replacing that speaker's prior genuine rows) and trains/saves their OC-SVM model
+- [x] `cli.py score <speaker> <clip>` prints genuine/synthetic + confidence score — verified against real clips for both `krishiv` and `mary`
 
 **Stage 9 — Wrap-up** — [unclaimed]
 - [ ] README setup + demo instructions finalized

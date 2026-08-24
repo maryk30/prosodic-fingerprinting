@@ -14,8 +14,10 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Usage (target CLI, once Stage 8 is done)
+## Usage
 ```bash
-python cli.py enroll <speaker_name> data/genuine/<speaker_name>/*.wav
-python cli.py score <speaker_name> <candidate_clip.wav>
+python cli.py enroll <speaker_name> data/genuine/<speaker_name>/*.m4a
+python cli.py score <speaker_name> <candidate_clip.m4a>
 ```
+Any format librosa/ffmpeg can decode works (m4a, wav, mp3, ...) — make sure
+`ffmpeg` is installed (`brew install ffmpeg`).

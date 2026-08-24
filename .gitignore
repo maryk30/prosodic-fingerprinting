@@ -20,6 +20,7 @@ data/features/*.csv
 data/features/*.parquet
 data/features/fingerprints/
 data/features/models/
+data/features/f0_reference.json
 
 # Notebooks checkpoints
 .ipynb_checkpoints/

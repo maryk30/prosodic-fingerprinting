@@ -15,6 +15,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.svm import OneClassSVM
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from features import extract_raw_features, to_row  # noqa: E402
 from fingerprint import NUMERIC_FEATURES  # noqa: E402
 
 MODEL_DIR = "data/features/models"
@@ -24,16 +25,20 @@ DEFAULT_GAMMA = "scale"
 
 
 class SpeakerAnomalyDetector:
-    def __init__(self, speaker: str, scaler: StandardScaler, model: OneClassSVM):
+    def __init__(
+        self, speaker: str, scaler: StandardScaler, model: OneClassSVM, f0_ref_hz: float
+    ):
         self.speaker = speaker
         self.scaler = scaler
         self.model = model
+        self.f0_ref_hz = f0_ref_hz
 
     @classmethod
     def train(
         cls,
         speaker: str,
         clip_rows: pd.DataFrame,
+        f0_ref_hz: float,
         nu: float = DEFAULT_NU,
         kernel: str = DEFAULT_KERNEL,
         gamma: str = DEFAULT_GAMMA,
@@ -41,7 +46,7 @@ class SpeakerAnomalyDetector:
         X = clip_rows[NUMERIC_FEATURES].to_numpy(dtype=float)
         scaler = StandardScaler().fit(X)
         model = OneClassSVM(kernel=kernel, nu=nu, gamma=gamma).fit(scaler.transform(X))
-        return cls(speaker, scaler, model)
+        return cls(speaker, scaler, model, f0_ref_hz)
 
     def score(self, feature_row: dict) -> dict:
         x = np.array([[feature_row[c] for c in NUMERIC_FEATURES]], dtype=float)
@@ -50,22 +55,32 @@ class SpeakerAnomalyDetector:
         pred = int(self.model.predict(xs)[0])  # 1 inlier, -1 outlier
         return {"prediction": "genuine" if pred == 1 else "synthetic", "confidence": decision}
 
+    def score_clip(self, path: str) -> dict:
+        """Run the full preprocessing/feature pipeline on a raw candidate
+        clip and score it against this speaker's model."""
+        raw = extract_raw_features(path, speaker=self.speaker, label="candidate", tts_system="na")
+        row = to_row(raw, self.f0_ref_hz)
+        return self.score(row)
+
     def save(self, out_dir: str = MODEL_DIR) -> str:
         os.makedirs(out_dir, exist_ok=True)
         path = os.path.join(out_dir, f"{self.speaker}_oneclass.joblib")
-        joblib.dump({"scaler": self.scaler, "model": self.model}, path)
+        joblib.dump(
+            {"scaler": self.scaler, "model": self.model, "f0_ref_hz": self.f0_ref_hz}, path
+        )
         return path
 
     @classmethod
     def load(cls, speaker: str, out_dir: str = MODEL_DIR) -> "SpeakerAnomalyDetector":
         path = os.path.join(out_dir, f"{speaker}_oneclass.joblib")
         data = joblib.load(path)
-        return cls(speaker, data["scaler"], data["model"])
+        return cls(speaker, data["scaler"], data["model"], data["f0_ref_hz"])
 
 
 def leave_one_out_eval(
     speaker: str,
     clip_rows: pd.DataFrame,
+    f0_ref_hz: float,
     nu: float = DEFAULT_NU,
     kernel: str = DEFAULT_KERNEL,
     gamma: str = DEFAULT_GAMMA,
@@ -81,20 +96,26 @@ def leave_one_out_eval(
     for i in range(len(clip_rows)):
         train_rows = clip_rows.drop(index=i)
         test_row = clip_rows.iloc[i]
-        detector = SpeakerAnomalyDetector.train(speaker, train_rows, nu=nu, kernel=kernel, gamma=gamma)
+        detector = SpeakerAnomalyDetector.train(
+            speaker, train_rows, f0_ref_hz, nu=nu, kernel=kernel, gamma=gamma
+        )
         predictions.append(detector.score(test_row.to_dict())["prediction"])
     acceptance_rate = predictions.count("genuine") / len(predictions)
     return acceptance_rate, predictions
 
 
 if __name__ == "__main__":
+    import json
+
     df = pd.read_csv("data/features/features.csv")
     genuine = df[df["label"] == "genuine"]
+    with open("data/features/f0_reference.json") as f:
+        f0_refs = json.load(f)
 
     for speaker, group in genuine.groupby("speaker"):
-        acc, preds = leave_one_out_eval(speaker, group)
+        acc, preds = leave_one_out_eval(speaker, group, f0_refs[speaker])
         print(f"{speaker}: leave-one-out genuine-acceptance rate = {acc:.0%} {preds}")
 
-        detector = SpeakerAnomalyDetector.train(speaker, group)
+        detector = SpeakerAnomalyDetector.train(speaker, group, f0_refs[speaker])
         path = detector.save()
         print(f"  saved model -> {path}")
