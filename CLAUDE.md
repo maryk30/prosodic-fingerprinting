@@ -88,8 +88,10 @@ There's no special tooling — just discipline:
 - [x] Data contract confirmed accurate — no schema changes needed
 
 **Stage 4 — Fingerprint construction** — owner: Claude session (Mary)
-- [ ] Per-speaker statistical summary vector (mean/var/skew) from enrollment clips
-- [ ] Implement in `src/fingerprint.py`
+- [x] Per-speaker statistical summary vector (mean/var/skew) from enrollment clips — 11 features × 3 stats = 33-dim vector, built only from genuine clips
+- [x] Implement in `src/fingerprint.py` — verified against both speakers (krishiv, mary), saved to `data/features/fingerprints/<speaker>.json` (gitignored, same as other derived voice data)
+
+**Track A (Stages 1-4) complete for genuine data.** Synthetic clones still needed (no TTS API key yet) — once added, `features.py`/`fingerprint.py` pick them up automatically with no code changes. Handing off to Track B (Stage 5+) against the current `data/features/features.csv`.
 
 **Stage 5 — Detection model (primary)** — [unclaimed]
 - [ ] One-Class SVM trained on genuine fingerprints, scored against held-out genuine+synthetic clips
