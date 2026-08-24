@@ -73,11 +73,11 @@ There's no special tooling — just discipline:
 - [x] Organize into `data/genuine/<speaker>/` and `data/synthetic/<speaker>/<tts_system>/` — genuine done; synthetic folder pending clones above
 
 **Stage 2 — Preprocessing** — owner: Claude session (Mary)
-- [ ] VAD + segmentation (webrtcvad or pyannote VAD) — keep pause info, don't discard silence — [in progress]
-- [ ] Loudness normalization
-- [ ] Implement in `src/preprocessing.py`
+- [x] VAD + segmentation (webrtcvad, 30ms frames) — keep pause info, don't discard silence
+- [x] Loudness normalization (RMS-target, -20 dBFS)
+- [x] Implement in `src/preprocessing.py` — tested against all 20 genuine clips; also added `discover_clips()` to skip stray outlier recordings (>15s) rather than silently breaking VAD/feature stages downstream
 
-**Stage 3 — Prosodic feature extraction** — [unclaimed]
+**Stage 3 — Prosodic feature extraction** — owner: Claude session (Mary)
 - [ ] F0 contour (librosa pYIN), speaker-relative semitone normalization
 - [ ] Energy (RMS) trajectory
 - [ ] Speaking rate proxy
