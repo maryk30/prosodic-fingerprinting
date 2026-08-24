@@ -1,0 +1,11 @@
+librosa>=0.10
+praat-parselmouth>=0.4
+webrtcvad>=2.0
+numpy
+scipy
+pandas
+scikit-learn
+matplotlib
+jupyter
+
+# Stretch goal (spectral baseline): speechbrain

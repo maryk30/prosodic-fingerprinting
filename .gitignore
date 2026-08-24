@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# Secrets
+.env
+*.key
+
+# Audio data (large / private — not committed)
+data/genuine/**/*.wav
+data/genuine/**/*.mp3
+data/synthetic/**/*.wav
+data/synthetic/**/*.mp3
+data/features/*.csv
+data/features/*.parquet
+
+# Notebooks checkpoints
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
