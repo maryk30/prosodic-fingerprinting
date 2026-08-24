@@ -117,10 +117,39 @@ There's no special tooling — just discipline:
 - [x] `cli.py enroll <speaker> <clip1> <clip2> ...` builds and saves a fingerprint — also updates `features.csv` (replacing that speaker's prior genuine rows) and trains/saves their OC-SVM model
 - [x] `cli.py score <speaker> <clip>` prints genuine/synthetic + confidence score — verified against real clips for both `krishiv` and `mary`
 
-**Stage 9 — Wrap-up** — [unclaimed]
-- [ ] README setup + demo instructions finalized
-- [ ] Final status update here: what shipped vs. what's deferred to future work
+**Stage 9 — Wrap-up** — owner: Claude session (Mary)
+- [x] README setup + demo instructions finalized
+- [x] Final status update here: what shipped vs. what's deferred to future work
 
 ## End-of-day status
-_(fill in before wrapping up — one paragraph: what works, what's a stub, what
-to demo, what broke)_
+Full pipeline works end-to-end on real data: `cli.py enroll krishiv data/genuine/krishiv/*.m4a`
+and `cli.py score krishiv <clip>` run cleanly, producing a fingerprint,
+a trained per-speaker One-Class SVM, and a genuine/synthetic + confidence
+verdict. Stages 1-5, 7, 8 are done for genuine data (10 clips each,
+`krishiv`/`mary`); `notebooks/results.ipynb` runs clean end-to-end with
+per-speaker feature plots and a leave-one-out self-consistency check.
+
+**What's a stub / blocked**: Stage 1's synthetic TTS clones were never
+generated (no ElevenLabs/free-tier API key available today), which cascades:
+Stage 7's real numbers (ROC-AUC, EER, accuracy vs. actual clones) are
+unmeasured — the notebook's evaluation cell is fully wired up and will
+run with zero code changes once clips land in
+`data/synthetic/<speaker>/<tts_system>/` and `python src/features.py` is
+re-run. Stage 5b (supervised SVM/RF) and Stage 6 (spectral baseline) —
+both stretch goals — are unstarted for the same reason: no labeled negative
+class to train/compare against yet.
+
+**Known weakness**: only 10 genuine clips/speaker in an 11-dim feature
+space is thin for the One-Class SVM. RBF kernel overfit badly (leave-one-out
+self-acceptance 0-20%); switched to linear kernel (50-60%). This is
+model-capacity-appropriate for today's MVP scope, not a bug, but it means
+Stage 7's numbers once synthetic data exists should be read with that
+sample-size caveat rather than treated as a tight estimate.
+
+**To demo**: `python cli.py enroll <speaker> data/genuine/<speaker>/*.m4a`
+then `python cli.py score <speaker> <any clip>` — works today, no setup
+beyond `pip install -r requirements.txt` + `brew install ffmpeg`.
+
+**Next session priority**: get a TTS API key, generate clones, re-run
+`src/features.py`, then Stage 7's real eval numbers and Stage 5b/6 stretch
+goals become unblocked with no pipeline changes needed.
