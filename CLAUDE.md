@@ -123,6 +123,10 @@ There's no special tooling — just discipline:
 - [x] README setup + demo instructions finalized
 - [x] Final status update here: what shipped vs. what's deferred to future work
 
+## Presentation materials (added 2026-08-25)
+- `docs/results.tex` — hand-authored LaTeX version of `notebooks/results.ipynb`'s actual output (real tables/figures/printed numbers pulled from the executed notebook, not fabricated). Source only, not compiled — no LaTeX distribution installed in this environment; `pandoc`-based `nbconvert` LaTeX export was tried first and abandoned after Homebrew/network failures, hand-authoring was cleaner anyway. Depends on `docs/assets/feature-boxplots.png` (extracted from the notebook's own boxplot cell output — filename avoids underscores deliberately, they need escaping in raw LaTeX arguments like `\includegraphics`).
+- `demo.sh` + `docs/DEMO_SCRIPT.md` — live presentation demo. Runs the real `cli.py enroll` pipeline + a live self-consistency check against actual recordings (not a mockup). **Deliberately does not run `cli.py score` live**: a full sweep of every same-speaker/cross-speaker clip combination showed confidence scores all within ±0.005 of zero — the current model doesn't reliably discriminate at this sample size, so a live single-clip verdict would just be showing noise, and picking a clip that happens to "work" would misrepresent the system to the panel. The demo instead honestly shows the self-consistency numbers already documented (krishiv 60%, mary 50%) and pivots the "does this work" evidence to the fingerprint visuals, which show real measurable spectral/prosodic differences independent of the SVM's current thin margin.
+
 ## End-of-day status
 Full pipeline works end-to-end on real data: `cli.py enroll krishiv data/genuine/krishiv/*.m4a`
 and `cli.py score krishiv <clip>` run cleanly, producing a fingerprint,
