@@ -21,6 +21,7 @@ data/features/*.parquet
 data/features/fingerprints/
 data/features/models/
 data/features/f0_reference.json
+data/features/fingerprint_visuals/
 
 # Notebooks checkpoints
 .ipynb_checkpoints/

@@ -24,7 +24,9 @@ prosody is evidence the clip is a clone.
 | Synthetic clone recordings | `data/synthetic/<speaker>/<tts_system>/` | **Not done** — needs a TTS API key |
 | Preprocessing pipeline | `src/preprocessing.py` | Done |
 | Prosodic feature extraction | `src/features.py` | Done |
-| Fingerprint construction | `src/fingerprint.py` | Done |
+| Prosodic fingerprint construction | `src/fingerprint.py` | Done |
+| Spectral (MFCC) fingerprint construction | `src/spectral_features.py`, `src/spectral_fingerprint.py` | Done |
+| Voice fingerprint visuals (spectrogram, MFCC profile, prosodic comparison) | `src/visualize_fingerprints.py` | Done |
 | Detection model (One-Class SVM) | `src/models/oneclass.py` | Done (genuine-only training; real eval pending) |
 | Evaluation metrics | `src/eval.py` | Done, wired up, pending synthetic data to produce real numbers |
 | Results notebook | `notebooks/results.ipynb` | Done, runs clean end-to-end |
@@ -124,6 +126,39 @@ Per the MVP scope decision, a speaker's fingerprint is **not** a learned
 embedding — it's a statistical summary vector: for each of the 11 features,
 the **mean, variance, and skew** across that speaker's genuine enrollment
 clips (33 numbers total). Saved as `data/features/fingerprints/<speaker>.json`.
+
+### 3.3b Spectral fingerprint (`src/spectral_features.py`, `src/spectral_fingerprint.py`)
+
+Added on request as a companion deliverable to the prosodic fingerprint —
+"fingerprints (spectral and prosodic)" for both speakers. Where the
+prosodic fingerprint captures habits, the spectral one captures raw
+timbral texture, via **MFCCs** (Mel-Frequency Cepstral Coefficients), the
+standard representation behind most speaker-ID and spectral anti-spoofing
+systems:
+
+1. `spectral_features.py` computes 13 MFCCs per clip (on the same
+   preprocessed audio as the prosodic pipeline), reduces each to a
+   mean/std per coefficient (26 numbers), and writes
+   `data/features/spectral_features.csv`.
+2. `spectral_fingerprint.py` collapses a speaker's genuine clips into
+   mean/var/skew of those 26 numbers (**78-dim**), reusing
+   `fingerprint.py`'s `build_fingerprint()` — it was generalized to take a
+   `numeric_features` column list instead of being prosodic-only, so both
+   fingerprint types share one implementation.
+3. Saved as `data/features/fingerprints/<speaker>_spectral.json`.
+
+This is a **lightweight MFCC summary, not the full pretrained ECAPA-TDNN
+embedding** scoped under Stage 6 (stretch) in `CLAUDE.md` — same
+no-heavy-dependency approach as the rest of the MVP. `cli.py enroll` now
+builds both fingerprint types for a speaker in one call.
+
+**Voice fingerprint visuals** (`src/visualize_fingerprints.py`): renders a
+mel-spectrogram and MFCC coefficient profile per speaker, plus a
+cross-speaker prosodic comparison. Note: comparing exactly two speakers by
+min-max normalizing each feature to [0,1] was tried first and rejected —
+with only two points, that trivially puts one speaker at 0 and the other
+at 1 on *every* feature regardless of how close the real values are. The
+comparison instead uses small multiples, each in its own real units.
 
 ### 3.4 Detection model (`src/models/oneclass.py`)
 

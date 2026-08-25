@@ -20,10 +20,13 @@ NUMERIC_FEATURES = [
 FINGERPRINT_DIR = "data/features/fingerprints"
 
 
-def build_fingerprint(clip_rows: pd.DataFrame) -> dict:
-    """clip_rows: one speaker's enrollment clips, in the features.csv schema."""
+def build_fingerprint(clip_rows: pd.DataFrame, numeric_features: list[str] = NUMERIC_FEATURES) -> dict:
+    """clip_rows: one speaker's enrollment clips, with `numeric_features` columns
+    present. Reused by src/spectral_fingerprint.py with a different column set,
+    since the mean/var/skew-summary approach is identical for both fingerprint
+    types — only the underlying features (prosodic vs. spectral/MFCC) differ."""
     vec = {}
-    for col in NUMERIC_FEATURES:
+    for col in numeric_features:
         values = clip_rows[col].to_numpy(dtype=float)
         vec[f"{col}_mean"] = float(np.mean(values))
         vec[f"{col}_var"] = float(np.var(values))
@@ -44,16 +47,18 @@ def build_all_fingerprints(features_csv: str) -> pd.DataFrame:
     return pd.DataFrame(rows).set_index("speaker")
 
 
-def save_fingerprint(speaker: str, fingerprint: dict, out_dir: str = FINGERPRINT_DIR) -> str:
+def save_fingerprint(
+    speaker: str, fingerprint: dict, out_dir: str = FINGERPRINT_DIR, suffix: str = ""
+) -> str:
     os.makedirs(out_dir, exist_ok=True)
-    path = os.path.join(out_dir, f"{speaker}.json")
+    path = os.path.join(out_dir, f"{speaker}{suffix}.json")
     with open(path, "w") as f:
         json.dump(fingerprint, f, indent=2)
     return path
 
 
-def load_fingerprint(speaker: str, out_dir: str = FINGERPRINT_DIR) -> dict:
-    path = os.path.join(out_dir, f"{speaker}.json")
+def load_fingerprint(speaker: str, out_dir: str = FINGERPRINT_DIR, suffix: str = "") -> dict:
+    path = os.path.join(out_dir, f"{speaker}{suffix}.json")
     with open(path) as f:
         return json.load(f)
 
