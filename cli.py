@@ -2,7 +2,12 @@
 """VoiceGuard CLI — Stage 8 deliverable.
 
     python cli.py enroll <speaker> <clip1> [<clip2> ...]
-    python cli.py score <speaker> <candidate_clip>
+    python cli.py score <speaker> <candidate_clip> [--sentence N]
+
+--sentence N: the candidate is reading prompt sentence N from
+docs/RECORDING_SCRIPT.md, so also compare its pitch/loudness contour and
+timing against the speaker's own reading of that sentence (text-dependent
+check, src/contour.py).
 """
 
 import argparse
@@ -16,6 +21,7 @@ import pandas as pd  # noqa: E402
 
 from features import FEATURE_COLUMNS, extract_raw_features, speaker_f0_reference_hz, to_row  # noqa: E402
 from fingerprint import FINGERPRINT_DIR, build_fingerprint, save_fingerprint  # noqa: E402
+from contour import compare, contour, find_take, td_distance, td_threshold  # noqa: E402
 from distance import FingerprintDistanceDetector  # noqa: E402
 from spectral_features import MFCC_FEATURE_COLUMNS, SPECTRAL_COLUMNS, extract_mfcc_row  # noqa: E402
 
@@ -88,7 +94,30 @@ def cmd_score(args: argparse.Namespace) -> None:
         weight = detector.components[name][1]
         print(
             f"  {name:15s} weight {weight:.2f}  distance {part['distance']:5.2f} sd  "
-            f"-> {part['share']:4.0%} of score"
+            f"-> {part['share']:4.0%} of score" + ("  (capped)" if part["capped"] else "")
+        )
+
+    if args.sentence is not None:
+        ref = find_take(args.speaker, args.sentence)
+        if ref is None:
+            print(f"text-dependent: no enrolled reading of sentence {args.sentence} by {args.speaker}")
+            return
+        if os.path.abspath(ref) == os.path.abspath(args.clip):
+            print("text-dependent: candidate is the reference take itself — skipped")
+            return
+        m = compare(contour(ref), contour(args.clip))
+        d = td_distance(m)
+        # threshold from the speaker's genuine take pairs of *other* sentences
+        threshold = td_threshold(args.speaker, exclude_sentence=args.sentence)
+        verdict = (
+            "uncalibrated (needs 2nd takes, see docs/RECORDING_SCRIPT.md)"
+            if threshold is None
+            else ("genuine" if d <= threshold else "synthetic") + f" (threshold {threshold:.3f})"
+        )
+        print(
+            f"text-dependent vs {os.path.basename(ref)}: distance {d:.3f} -> {verdict}\n"
+            f"  contour {m['contour_dist']:.3f}  timing {m['timing_dist']:.3f}  "
+            f"tempo {m['tempo_ratio']:.3f}"
         )
 
 
@@ -104,6 +133,9 @@ def main() -> None:
     p_score = sub.add_parser("score", help="Score a candidate clip against an enrolled speaker")
     p_score.add_argument("speaker")
     p_score.add_argument("clip")
+    p_score.add_argument(
+        "--sentence", type=int, help="prompt sentence number the clip is reading (text-dependent check)"
+    )
     p_score.set_defaults(func=cmd_score)
 
     args = parser.parse_args()

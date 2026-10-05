@@ -80,3 +80,33 @@ as well; they become extra enrollment data.
 - Generate one clone clip for each of sentences 21–30, for each speaker.
   Save them as `data/synthetic/<speaker>/<tts_system>/<speaker>_sNN.<ext>`,
   where `<tts_system>` is e.g. `elevenlabs` or `xtts`.
+
+---
+
+# Round 3: second takes of s21–s30 (text-dependent check)
+
+`cli.py score <speaker> <clip> --sentence N` compares a clip with the
+speaker's own earlier reading of the same sentence, using pitch and
+loudness contour shape and syllable timing. Before it can give a verdict,
+it needs to know how much a genuine speaker varies between two readings of
+the same sentence. That comes from a **second take** of each held-out
+sentence.
+
+- **What to record:** sentences **21–30** again, one file each, so 10 clips
+  per speaker.
+- **Naming:** `<speaker>_sNN_t2.m4a`, for example `krishiv_s21_t2.m4a` or
+  `mary_s21_t2.m4a`. Save them in `data/genuine/<speaker>/` next to the
+  originals.
+- **How to read:** naturally, as in round 2. Don't listen back to your first
+  take first, and don't try to copy it. The point is to capture your normal
+  variation.
+- **When:** ideally on a different day from round 2. Same mic and room.
+
+Once they're in place, run:
+
+```
+python src/contour.py      # text-dependent ROC-AUC / EER, genuine vs impostor pairs
+```
+
+After that, `cli.py score ... --sentence N` prints a calibrated verdict. Its
+threshold comes from your genuine take pairs on the *other* nine sentences.
