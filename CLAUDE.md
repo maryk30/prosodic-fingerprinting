@@ -69,7 +69,7 @@ There's no special tooling — just discipline:
 
 **Stage 1 — Data collection** — owner: Claude session (Mary)
 - [x] Record 5-10 short (3-10s) genuine clips for 1-2 enrolled speakers (team members) — 10 clips each for `krishiv` and `mary` in `data/genuine/<speaker>/` (m4a)
-- [ ] Generate synthetic clones of the same speakers via free-tier TTS API — deferred, no API key yet; revisit once available
+- [ ] Generate synthetic clones of the same speakers via free-tier TTS API — deferred, no API key yet; when done, clone sentences s21–s30 only, using s01–s20 as reference audio (see `docs/RECORDING_SCRIPT.md`)
 - [x] Organize into `data/genuine/<speaker>/` and `data/synthetic/<speaker>/<tts_system>/` — genuine done; synthetic folder pending clones above
 
 **Stage 2 — Preprocessing** — owner: Claude session (Mary)
@@ -101,10 +101,12 @@ There's no special tooling — just discipline:
 - **Known limitation**: only 10 genuine clips/speaker (9 per leave-one-out fold) in an 11-dim feature space is thin for learning a robust boundary. RBF kernel badly overfit (0-20% self-acceptance on held-out genuine); switched default to `linear` kernel, which does better (50-60%) but is still noisy at this sample size. Did **not** grid-search nu/gamma against this same tiny holdout — that would just fit noise. Real validation is Stage 7 once synthetic clips exist as the actual anomaly class; if scores there are poor, revisit with more enrollment clips before touching hyperparameters again.
 
 **Stage 5c — Detector fix + cross-speaker impostor eval (no clones needed)** — owner: Claude session (Mary) — [in progress 2026-10-05]
-- [ ] Diagnose/fix linear OC-SVM on standardized features (boundary passes through the data centre → ~50% self-acceptance, scores ≈ 0)
-- [ ] Cross-speaker impostor evaluation (score mary vs krishiv's model and vice versa) → first real ROC-AUC/EER, prosodic vs MFCC
-- [ ] Feature-group ablation on the impostor task
-- [ ] Wire chosen detector into `cli.py`, notebook, docs
+- [x] Diagnosed linear OC-SVM: on standardized data its boundary passes through the data centre (rho ~1e-8, |w| ~0, decisions within ±0.001 on its own training clips) — that, not sample size, caused ~50% self-acceptance and ≈0 confidences. Replaced as default by `src/models/distance.py` (RMS z-score from the enrollment fingerprint, threshold = 90th pct of leave-one-out genuine distances, std floors at measurement resolution). `cli.py` now uses it; `oneclass.py` kept for comparison only.
+- [x] `src/impostor_eval.py`: cross-speaker impostor eval (LOO genuine vs other speaker re-referenced to the claimed speaker's F0) for prosodic / prosodic-minus-f0_mean (clone proxy) / MFCC × detector, plus feature-group ablation.
+- [x] Data fix: 4 round-1 clips were misfiled between krishiv/mary (pitch + MFCC + jitter/shimmer all agreed; confirmed by listening) and moved.
+- [x] **Round 2 recordings (2026-10-05)**: 30 matched-text clips per speaker per `docs/RECORDING_SCRIPT.md` (round-1 Munpalle clips removed from `data/genuine/`). Both speakers enrolled on s01–s20; s21–s30 held out.
+- **Results on round 2**: held-out s21–s30 vs both models → 38/40 correct, ROC-AUC 1.00 (2 krishiv genuine false-rejects, s21/s30, high-shimmer — likely session drift). LOO impostor eval: full prosodic AUC 0.97, MFCC 0.96, but **prosodic without pitch level only 0.61** — on matched read text the two speakers separate mainly by pitch register/timbre; the "habit" features individually separate weakly (best f0_std 0.76). This is the clone-relevant number and it's weak; round-1's stronger pause/voice-quality separation looks partly like a room/text artifact (krishiv's recordings ~22 dB SNR vs mary's ~30). Real test is still clones of s21–s30.
+- [ ] Update notebook, `docs/results.tex`, `DEMO_SCRIPT.md` with the above — next
 
 **Stage 5b — Stretch: supervised model** — [unclaimed]
 - [ ] SVM/RF trained on labeled genuine+synthetic features
