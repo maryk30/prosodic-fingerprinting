@@ -11,12 +11,14 @@ check, src/contour.py).
 """
 
 import argparse
+import json
 import os
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src", "models"))
 
+import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 
 from features import FEATURE_COLUMNS, extract_raw_features, speaker_f0_reference_hz, to_row  # noqa: E402
@@ -27,6 +29,44 @@ from spectral_features import MFCC_FEATURE_COLUMNS, SPECTRAL_COLUMNS, extract_mf
 
 FEATURES_CSV = "data/features/features.csv"
 SPECTRAL_CSV = "data/features/spectral_features.csv"
+F0_REF_JSON = "data/features/f0_reference.json"
+
+
+def _upsert(csv_path: str, df_new: pd.DataFrame) -> pd.DataFrame:
+    """Write df_new into csv_path, replacing only rows with the same
+    (speaker, clip_id, label). The speaker's other clips — e.g. held-out
+    test sentences, or synthetic clones — are kept."""
+    if os.path.exists(csv_path):
+        df_existing = pd.read_csv(csv_path)
+        key = ["speaker", "clip_id", "label"]
+        new_keys = set(map(tuple, df_new[key].to_numpy()))
+        keep = [tuple(k) not in new_keys for k in df_existing[key].to_numpy()]
+        df_all = pd.concat([df_existing[keep], df_new], ignore_index=True)
+    else:
+        df_all = df_new
+    os.makedirs(os.path.dirname(csv_path), exist_ok=True)
+    df_all.to_csv(csv_path, index=False)
+    return df_all
+
+
+def _rereference_speaker(speaker: str, new_ref_hz: float) -> None:
+    """Enrollment recomputes the speaker's median-F0 reference from the
+    enrolled clips. Shift f0_mean on their *other* rows in features.csv from
+    the old reference to the new one, so every row of that speaker is in the
+    same semitone frame, and record the new reference."""
+    refs = {}
+    if os.path.exists(F0_REF_JSON):
+        with open(F0_REF_JSON) as f:
+            refs = json.load(f)
+    old_ref_hz = refs.get(speaker)
+    if old_ref_hz and os.path.exists(FEATURES_CSV) and old_ref_hz != new_ref_hz:
+        df = pd.read_csv(FEATURES_CSV)
+        rows = df["speaker"] == speaker
+        df.loc[rows, "f0_mean"] += 12 * np.log2(old_ref_hz / new_ref_hz)
+        df.to_csv(FEATURES_CSV, index=False)
+    refs[speaker] = new_ref_hz
+    with open(F0_REF_JSON, "w") as f:
+        json.dump(refs, f, indent=2)
 
 
 def cmd_enroll(args: argparse.Namespace) -> None:
@@ -38,14 +78,8 @@ def cmd_enroll(args: argparse.Namespace) -> None:
     rows = [to_row(r, f0_ref_hz) for r in raw_clips]
     df_new = pd.DataFrame(rows, columns=FEATURE_COLUMNS)
 
-    if os.path.exists(FEATURES_CSV):
-        df_existing = pd.read_csv(FEATURES_CSV)
-        keep = ~((df_existing["speaker"] == args.speaker) & (df_existing["label"] == "genuine"))
-        df_all = pd.concat([df_existing[keep], df_new], ignore_index=True)
-    else:
-        df_all = df_new
-    os.makedirs(os.path.dirname(FEATURES_CSV), exist_ok=True)
-    df_all.to_csv(FEATURES_CSV, index=False)
+    _rereference_speaker(args.speaker, f0_ref_hz)  # before upsert: shifts only pre-existing rows
+    _upsert(FEATURES_CSV, df_new)
 
     fingerprint = build_fingerprint(df_new)
     fp_path = save_fingerprint(args.speaker, fingerprint)
@@ -55,16 +89,7 @@ def cmd_enroll(args: argparse.Namespace) -> None:
         for path in args.clips
     ]
     df_spectral_new = pd.DataFrame(spectral_rows, columns=SPECTRAL_COLUMNS)
-    if os.path.exists(SPECTRAL_CSV):
-        df_spectral_existing = pd.read_csv(SPECTRAL_CSV)
-        keep = ~(
-            (df_spectral_existing["speaker"] == args.speaker)
-            & (df_spectral_existing["label"] == "genuine")
-        )
-        df_spectral_all = pd.concat([df_spectral_existing[keep], df_spectral_new], ignore_index=True)
-    else:
-        df_spectral_all = df_spectral_new
-    df_spectral_all.to_csv(SPECTRAL_CSV, index=False)
+    _upsert(SPECTRAL_CSV, df_spectral_new)
 
     spectral_fingerprint = build_fingerprint(df_spectral_new, MFCC_FEATURE_COLUMNS)
     spectral_fp_path = save_fingerprint(

@@ -109,12 +109,15 @@ def compute_pauses(speech_segments: list[Segment], clip_duration: float) -> list
     return pauses
 
 
-def discover_clips(root: str, pattern: str = "*.m4a") -> list[str]:
+AUDIO_PATTERNS = ("*.m4a", "*.wav", "*.mp3")  # genuine recordings are m4a; TTS clones are often wav/mp3
+
+
+def discover_clips(root: str, patterns: tuple[str, ...] = AUDIO_PATTERNS) -> list[str]:
     """Find clip paths under `root` (e.g. data/genuine/<speaker>/), skipping
     stray recordings well outside the expected 3-10s range."""
     import glob
 
-    paths = sorted(glob.glob(f"{root}/**/{pattern}", recursive=True))
+    paths = sorted(p for pat in patterns for p in glob.glob(f"{root}/**/{pat}", recursive=True))
     kept = []
     for p in paths:
         dur = librosa.get_duration(path=p)
