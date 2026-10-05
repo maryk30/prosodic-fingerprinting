@@ -3,7 +3,7 @@
 Runs in the separate TTS environment (torch + coqui-tts are kept out of the
 main .venv):
 
-    python3.11 -m venv .venv-tts && .venv-tts/bin/pip install coqui-tts
+    python3.11 -m venv .venv-tts && .venv-tts/bin/pip install -r requirements-tts.txt
     .venv-tts/bin/python src/generate_clones.py krishiv mary
 
 Protocol (docs/RECORDING_SCRIPT.md):

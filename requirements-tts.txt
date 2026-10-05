@@ -1,0 +1,15 @@
+# Separate environment for local voice cloning (src/generate_clones.py).
+# Kept out of requirements.txt: torch is large and these pins conflict with
+# nothing in the main pipeline, but there's no reason to make it install them.
+#
+#   /opt/homebrew/bin/python3.11 -m venv .venv-tts
+#   .venv-tts/bin/pip install -r requirements-tts.txt
+#
+# Pins matter (found the hard way, 2026-10-05):
+#   - coqui-tts no longer pulls in torch itself
+#   - torch >= 2.9 needs the separate torchcodec library for audio IO
+#   - transformers 5.x removed isin_mps_friendly, which XTTS imports
+coqui-tts==0.27.5
+torch==2.8.0
+torchaudio==2.8.0
+transformers>=4.43,<5
