@@ -125,6 +125,11 @@ There's no special tooling — just discipline:
 - [ ] Next: once 2nd takes land — text-dependent eval; decide whether to fold `td_distance` into the blend as a prosody sub-component.
 - [ ] Update notebook / `docs/results.tex` / `DEMO_SCRIPT.md` / `demo.sh` (demo.sh enrolls `*.m4a`, which now includes held-out s21–s30)
 
+**Stage 1c — Local voice clones (XTTS-v2), no API key** — owner: Claude session (Mary) — [in progress 2026-10-05]
+- [ ] Separate `.venv-tts` (coqui-tts; heavy torch deps kept out of the main venv). Clone s21–s30 for krishiv + mary using s01–s20 as reference audio → `data/synthetic/<speaker>/xtts/<speaker>_sNN.wav`. XTTS-v2 is CPML (non-commercial) — fine for coursework.
+- [ ] Fix `cli.py enroll` dropping a speaker's non-enrolled (held-out) rows from features.csv/spectral_features.csv
+- [ ] Clone eval: held-out genuine s21–s30 vs XTTS clones of s21–s30, blend / prosody-only / register+timbre / text-dependent
+
 **Stage 1b — Third speaker** — owner: team — [planned 2026-10-05]
 - [ ] Record a 3rd speaker (ordinary, less polished speech than mary/krishiv — chosen as typical, *not* for being different) with the same protocol: all 30 sentences + 2nd takes of s21–s30, same phone + room as mary/krishiv. Clone them too once clones are generated. Code picks up `data/genuine/<name>/` automatically.
 
