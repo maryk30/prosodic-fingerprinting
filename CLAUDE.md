@@ -65,7 +65,7 @@ There's no special tooling — just discipline:
 
 **Stage 0 — Scaffold** — owner: Shreya (this session)
 - [x] git init, .gitignore, requirements.txt, folder skeleton, README, CLAUDE.md
-- [ ] Push initial commit to https://github.com/maryk30/prosodic-fingerprinting.git — [in progress]
+- [x] Push initial commit to https://github.com/maryk30/prosodic-fingerprinting.git
 
 **Stage 1 — Data collection** — owner: Claude session (Mary)
 - [x] Record 5-10 short (3-10s) genuine clips for 1-2 enrolled speakers (team members) — 10 clips each for `krishiv` and `mary` in `data/genuine/<speaker>/` (m4a)
@@ -99,6 +99,12 @@ There's no special tooling — just discipline:
 - [x] One-Class SVM trained on genuine fingerprints, scored against held-out genuine+synthetic clips — per-speaker model, trained on that speaker's genuine per-clip features (11-dim, standardized)
 - [x] Implement in `src/models/oneclass.py`
 - **Known limitation**: only 10 genuine clips/speaker (9 per leave-one-out fold) in an 11-dim feature space is thin for learning a robust boundary. RBF kernel badly overfit (0-20% self-acceptance on held-out genuine); switched default to `linear` kernel, which does better (50-60%) but is still noisy at this sample size. Did **not** grid-search nu/gamma against this same tiny holdout — that would just fit noise. Real validation is Stage 7 once synthetic clips exist as the actual anomaly class; if scores there are poor, revisit with more enrollment clips before touching hyperparameters again.
+
+**Stage 5c — Detector fix + cross-speaker impostor eval (no clones needed)** — owner: Claude session (Mary) — [in progress 2026-10-05]
+- [ ] Diagnose/fix linear OC-SVM on standardized features (boundary passes through the data centre → ~50% self-acceptance, scores ≈ 0)
+- [ ] Cross-speaker impostor evaluation (score mary vs krishiv's model and vice versa) → first real ROC-AUC/EER, prosodic vs MFCC
+- [ ] Feature-group ablation on the impostor task
+- [ ] Wire chosen detector into `cli.py`, notebook, docs
 
 **Stage 5b — Stretch: supervised model** — [unclaimed]
 - [ ] SVM/RF trained on labeled genuine+synthetic features
