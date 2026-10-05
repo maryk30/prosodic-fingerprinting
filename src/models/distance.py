@@ -7,13 +7,21 @@ on that component is how many standard deviations it sits from that
 profile (RMS z-score, i.e. diagonal Mahalanobis / sqrt(n_features)). The
 clip's overall distance is the weighted average of component distances:
 
-    distance = sum_c w_c * rms_z_c / sum_c w_c
+    distance = sum_c w_c * min(rms_z_c, cap_c) / sum_c w_c
 
-Weights are hand-set (DEFAULT_COMPONENTS), not fitted: prosody carries
-0.60 so speaking habit decides the verdict; pitch register and timbre —
-the things a voice clone copies best — can only nudge it. With 2 speakers
-and ~20 enrollment clips there isn't enough data to fit weights without
-overfitting the test clips, so they were fixed before evaluation.
+Weights and caps are hand-set (DEFAULT_COMPONENTS), not fitted: prosody
+carries 0.60 so speaking habit decides the verdict; pitch register and
+timbre — the things a voice clone copies best — can only nudge it. With 2
+speakers and ~20 enrollment clips there isn't enough data to fit weights
+without overfitting the test clips, so they were fixed before evaluation.
+
+Why caps as well as weights: a weight limits how much a component *can*
+count, not how much it *does*. Uncapped, pitch register (weight 0.10, a
+single feature) jumped from ~0.8 to 5 sd for a different speaker and drove
+~69% of the genuine-vs-impostor gap. Capping the non-prosody components at
+2 sd — roughly the edge of the genuine range — means they can flag a
+mismatch but how far beyond it doesn't matter: register adds at most
+0.10 x 2 = 0.2 to the distance, prosody typically ~0.6.
 
 The accept threshold comes from leave-one-out distances of the enrollment
 clips: the `quantile` (default 0.9) of how far held-out genuine clips land,
@@ -40,13 +48,15 @@ from spectral_features import MFCC_FEATURE_COLUMNS, extract_mfcc_row  # noqa: E4
 MODEL_DIR = "data/features/models"
 DEFAULT_QUANTILE = 0.9
 
-# name -> (features, weight)
-Components = dict[str, tuple[list[str], float]]
+NON_PROSODY_CAP = 2.0  # sd
+
+# name -> (features, weight, cap on the component's distance or None)
+Components = dict[str, tuple[list[str], float, float | None]]
 DEFAULT_COMPONENTS: Components = {
-    "prosody": (PROSODIC_FEATURES, 0.60),
-    "voice_quality": (VOICE_QUALITY_FEATURES, 0.15),
-    "timbre": (MFCC_FEATURE_COLUMNS, 0.15),
-    "pitch_register": (REGISTER_FEATURES, 0.10),
+    "prosody": (PROSODIC_FEATURES, 0.60, None),
+    "voice_quality": (VOICE_QUALITY_FEATURES, 0.15, NON_PROSODY_CAP),
+    "timbre": (MFCC_FEATURE_COLUMNS, 0.15, NON_PROSODY_CAP),
+    "pitch_register": (REGISTER_FEATURES, 0.10, NON_PROSODY_CAP),
 }
 
 # Floor on per-feature std, so a feature that happens to be (near-)constant
@@ -92,17 +102,21 @@ def _rms_z(X: np.ndarray, mean: np.ndarray, std: np.ndarray) -> np.ndarray:
 def _fit_components(rows: pd.DataFrame, components: Components) -> dict:
     return {
         name: _fit_stats(rows[feats].to_numpy(dtype=float), feats)
-        for name, (feats, _) in components.items()
+        for name, (feats, _, _) in components.items()
     }
 
 
 def _blend(rows: pd.DataFrame, stats: dict, components: Components) -> tuple[np.ndarray, dict]:
-    total_w = sum(w for _, w in components.values())
+    """Returns (blended distance, {component: raw uncapped distance})."""
+    total_w = sum(w for _, w, _ in components.values())
     parts = {
         name: _rms_z(rows[feats].to_numpy(dtype=float), *stats[name])
-        for name, (feats, _) in components.items()
+        for name, (feats, _, _) in components.items()
     }
-    blended = sum(components[name][1] * d for name, d in parts.items()) / total_w
+    blended = sum(
+        w * (np.minimum(parts[name], cap) if cap is not None else parts[name])
+        for name, (_, w, cap) in components.items()
+    ) / total_w
     return blended, parts
 
 
@@ -123,7 +137,7 @@ class FingerprintDistanceDetector:
 
     @property
     def features(self) -> list[str]:
-        return [f for feats, _ in self.components.values() for f in feats]
+        return [f for feats, _, _ in self.components.values() for f in feats]
 
     @classmethod
     def train(
@@ -165,19 +179,27 @@ class FingerprintDistanceDetector:
         blended, parts = _blend(pd.DataFrame([feature_row]), self.stats, self.components)
         d = float(blended[0])
         decision = self.threshold - d
-        total_w = sum(w for _, w in self.components.values())
+        total_w = sum(w for _, w, _ in self.components.values())
+
+        def contribution(name: str) -> float:
+            _, w, cap = self.components[name]
+            dist = float(parts[name][0])
+            return w * (min(dist, cap) if cap is not None else dist) / total_w
+
         return {
             "prediction": "genuine" if decision >= 0 else "synthetic",
             "confidence": decision,
             "distance": d,
             "threshold": self.threshold,
-            # per-component distance and its share of the blended distance
+            # per-component raw distance, whether the cap bit, and its share
+            # of the blended distance (after capping)
             "components": {
                 name: {
                     "distance": float(parts[name][0]),
-                    "share": float(self.components[name][1] * parts[name][0] / total_w / d) if d else 0.0,
+                    "capped": cap is not None and float(parts[name][0]) > cap,
+                    "share": contribution(name) / d if d else 0.0,
                 }
-                for name in self.components
+                for name, (_, _, cap) in self.components.items()
             },
         }
 

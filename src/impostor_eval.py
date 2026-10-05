@@ -48,12 +48,13 @@ F0_REF_JSON = "data/features/f0_reference.json"
 HELDOUT_FIRST_SENTENCE = 21
 
 SYSTEMS: dict[str, Components] = {
-    "blend (default)": DEFAULT_COMPONENTS,
-    "prosody only": {"prosody": (PROSODIC_FEATURES, 1.0)},
-    "legacy 11 features": {"legacy": (LEGACY_FEATURES, 1.0)},
+    "blend (default, capped)": DEFAULT_COMPONENTS,
+    "blend (uncapped)": {n: (f, w, None) for n, (f, w, _) in DEFAULT_COMPONENTS.items()},
+    "prosody only": {"prosody": (PROSODIC_FEATURES, 1.0, None)},
+    "legacy 11 features": {"legacy": (LEGACY_FEATURES, 1.0, None)},
     "register + timbre": {
-        "pitch_register": (REGISTER_FEATURES, 0.5),
-        "timbre": (MFCC_FEATURE_COLUMNS, 0.5),
+        "pitch_register": (REGISTER_FEATURES, 0.5, None),
+        "timbre": (MFCC_FEATURE_COLUMNS, 0.5, None),
     },
 }
 
@@ -155,8 +156,9 @@ def comparison_table(df: pd.DataFrame, f0_refs: dict, protocol: str = "heldout")
 
 def blend_shares(df: pd.DataFrame, f0_refs: dict) -> pd.DataFrame:
     """Held-out protocol, default blend: what share of the blended distance
-    each component contributed, on genuine vs impostor trials. Checks that
-    prosody is actually what drives the verdict, not just what's weighted."""
+    each component contributed, on genuine vs impostor trials, plus each
+    component's share of the *gap* between them — i.e. what actually drives
+    the verdict, not just what's weighted."""
     rows = []
     for target in sorted(df["speaker"].unique()):
         own = df[df["speaker"] == target]
@@ -169,9 +171,15 @@ def blend_shares(df: pd.DataFrame, f0_refs: dict) -> pd.DataFrame:
             ("impostor", imp[imp["sentence"] >= HELDOUT_FIRST_SENTENCE]),
         ]:
             for _, r in rows_.iterrows():
-                comps = det.score(r.to_dict())["components"]
-                rows.append({"trial": kind, **{n: c["share"] for n, c in comps.items()}})
-    return pd.DataFrame(rows).groupby("trial").mean()
+                res = det.score(r.to_dict())
+                rows.append(
+                    {"trial": kind, **{n: c["share"] * res["distance"] for n, c in res["components"].items()}}
+                )
+    contrib = pd.DataFrame(rows).groupby("trial").mean()  # mean contribution to blended distance
+    out = contrib.div(contrib.sum(axis=1), axis=0)
+    gap = contrib.loc["impostor"] - contrib.loc["genuine"]
+    out.loc["share of gap"] = gap / gap.sum()
+    return out
 
 
 def ablation_table(df: pd.DataFrame, f0_refs: dict, protocol: str = "heldout") -> pd.DataFrame:
@@ -179,7 +187,7 @@ def ablation_table(df: pd.DataFrame, f0_refs: dict, protocol: str = "heldout") -
     for group, cols in {"(none)": [], **PROSODY_GROUPS}.items():
         feats = [c for c in PROSODIC_FEATURES if c not in cols]
         rows.append(
-            {"dropped": group, **summarize(trial_scores(df, f0_refs, {"prosody": (feats, 1.0)}, protocol))}
+            {"dropped": group, **summarize(trial_scores(df, f0_refs, {"prosody": (feats, 1.0, None)}, protocol))}
         )
     return pd.DataFrame(rows)
 
