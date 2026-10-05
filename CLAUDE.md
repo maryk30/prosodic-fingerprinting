@@ -44,8 +44,15 @@ Stage 3, update this section immediately after):
 ```
 speaker, clip_id, label (genuine|synthetic), tts_system (na for genuine),
 f0_mean, f0_std, energy_mean, energy_std, speaking_rate_mean,
-pause_count, pause_mean_dur, pause_var_dur, npvi, jitter, shimmer
+pause_count, pause_mean_dur, pause_var_dur, npvi, jitter, shimmer,
+f0_range, f0_slope, f0_velocity, f0_final_move, energy_slope,
+voiced_fraction, varco_v, varco_uv          # added Stage 3b (2026-10-05)
 ```
+Stage 3b columns are register-independent (semitones/dB relative to the
+clip's own median). Feature groups for the detector live in
+`src/fingerprint.py` (`PROSODIC_FEATURES`, `VOICE_QUALITY_FEATURES`,
+`REGISTER_FEATURES`); `energy_mean` is in no group (loudness-normalized →
+mostly mic/room).
 
 ## Sync Protocol (how this file stays "live")
 There's no special tooling — just discipline:
@@ -108,10 +115,12 @@ There's no special tooling — just discipline:
 - **Results on round 2**: held-out s21–s30 vs both models → 38/40 correct, ROC-AUC 1.00 (2 krishiv genuine false-rejects, s21/s30, high-shimmer — likely session drift). LOO impostor eval: full prosodic AUC 0.97, MFCC 0.96, but **prosodic without pitch level only 0.61** — on matched read text the two speakers separate mainly by pitch register/timbre; the "habit" features individually separate weakly (best f0_std 0.76). This is the clone-relevant number and it's weak; round-1's stronger pause/voice-quality separation looks partly like a room/text artifact (krishiv's recordings ~22 dB SNR vs mary's ~30). Real test is still clones of s21–s30.
 - [ ] Update notebook, `docs/results.tex`, `DEMO_SCRIPT.md` with the above — next
 
-**Stage 3b — Prosody-only fingerprint (register/timbre-independent)** — owner: Claude session (Mary) — [in progress 2026-10-05]
-- [ ] Drop pitch register (f0_mean), loudness level (energy_mean) and voice quality (jitter/shimmer) from the fingerprint/detector; keep them as CSV columns for comparison
-- [ ] Add register-independent prosodic features: pitch range/slope/velocity/final movement, energy slope, voiced/unvoiced rhythm metrics (%V, VarcoV, VarcoUV)
-- [ ] Held-out (s01–s20 enroll → s21–s30 test) + LOO evaluation in `impostor_eval.py`; update data contract
+**Stage 3b — Prosody-led blended fingerprint** — owner: Claude session (Mary) — [in progress 2026-10-05]
+- [x] Per user: verdict = hand-weighted blend of component distances, prosody-led — prosody 0.60 / voice quality (jitter, shimmer) 0.15 / timbre (MFCC) 0.15 / pitch register (f0_mean) 0.10. `src/models/distance.py` (`DEFAULT_COMPONENTS`); `cli.py score` prints each component's distance and share. Per-feature |z| capped at 5; NaN features skipped per clip.
+- [x] 8 new register-independent prosodic features in `src/features.py` (pitch range/slope/velocity/final movement, energy slope, voiced fraction, VarcoV, VarcoUV). Best single prosodic separators now f0_velocity (0.86) and voiced_fraction (0.85; caveat: krishiv's noisier room may inflate pYIN voicing).
+- [x] `impostor_eval.py`: held-out protocol (enroll s01–s20 → test s21–s30, same sentences for genuine and impostor) + LOO; component-share and prosody-group ablation tables.
+- **Held-out results**: blend AUC 0.97 (90% acc), prosody-only 0.72 (was 0.61 with old features), register+timbre 1.00. **But pitch register still drives ~69% of the genuine-vs-impostor gap in the blend despite its 0.10 weight** (its distance jumps 0.8 → 5 sd for an impostor; prosody only 1.03 → 1.25). Weight caps influence, not actual influence. Open decision for the user on how to make prosody primary in effect, not just in weight.
+- [ ] Update notebook / `docs/results.tex` / `DEMO_SCRIPT.md` / `demo.sh` (demo.sh enrolls `*.m4a`, which now includes held-out s21–s30)
 
 **Stage 5b — Stretch: supervised model** — [unclaimed]
 - [ ] SVM/RF trained on labeled genuine+synthetic features

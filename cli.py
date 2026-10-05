@@ -65,7 +65,10 @@ def cmd_enroll(args: argparse.Namespace) -> None:
         args.speaker, spectral_fingerprint, out_dir=FINGERPRINT_DIR, suffix="_spectral"
     )
 
-    detector = FingerprintDistanceDetector.train(args.speaker, df_new, f0_ref_hz)
+    enroll_rows = df_new.merge(
+        df_spectral_new[["clip_id"] + MFCC_FEATURE_COLUMNS], on="clip_id", how="inner"
+    )
+    detector = FingerprintDistanceDetector.train(args.speaker, enroll_rows, f0_ref_hz)
     model_path = detector.save()
 
     print(f"Enrolled '{args.speaker}' from {len(args.clips)} clip(s).")
@@ -81,6 +84,12 @@ def cmd_score(args: argparse.Namespace) -> None:
         f"{args.clip}: {result['prediction']} (confidence={result['confidence']:+.3f}; "
         f"distance {result['distance']:.3f} vs threshold {result['threshold']:.3f})"
     )
+    for name, part in result["components"].items():
+        weight = detector.components[name][1]
+        print(
+            f"  {name:15s} weight {weight:.2f}  distance {part['distance']:5.2f} sd  "
+            f"-> {part['share']:4.0%} of score"
+        )
 
 
 def main() -> None:

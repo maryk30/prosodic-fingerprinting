@@ -19,6 +19,23 @@ NUMERIC_FEATURES = [
 ]
 FINGERPRINT_DIR = "data/features/fingerprints"
 
+# Stage 3b feature groups, used as the components of the blended detector
+# (src/models/distance.py). PROSODIC = speaking *habit*: how pitch and
+# loudness move, rhythm, rate, pauses — all independent of where the voice
+# sits. The other groups describe the voice itself and get small weights.
+# energy_mean is in no group: after RMS loudness normalization it mostly
+# reflects the mic/room (speech-vs-noise fraction), not the speaker.
+PROSODIC_FEATURES = [
+    "f0_std", "f0_range", "f0_slope", "f0_velocity", "f0_final_move",  # pitch movement
+    "energy_std", "energy_slope",  # loudness movement
+    "speaking_rate_mean", "npvi", "voiced_fraction", "varco_v", "varco_uv",  # rate/rhythm
+    "pause_count", "pause_mean_dur", "pause_var_dur",  # pauses
+]
+VOICE_QUALITY_FEATURES = ["jitter", "shimmer"]
+REGISTER_FEATURES = ["f0_mean"]  # pitch level, semitones vs the claimed speaker's median
+# Pre-Stage-3b 11-feature set, kept for before/after comparison.
+LEGACY_FEATURES = NUMERIC_FEATURES[:11]
+
 
 def build_fingerprint(clip_rows: pd.DataFrame, numeric_features: list[str] = NUMERIC_FEATURES) -> dict:
     """clip_rows: one speaker's enrollment clips, with `numeric_features` columns

@@ -7,6 +7,15 @@ contract:
     f0_mean, f0_std, energy_mean, energy_std, speaking_rate_mean,
     pause_count, pause_mean_dur, pause_var_dur, npvi, jitter, shimmer
 
+Stage 3b added register-independent prosodic columns after shimmer:
+
+    f0_range, f0_slope, f0_velocity, f0_final_move, energy_slope,
+    voiced_fraction, varco_v, varco_uv
+
+These are computed in semitones/dB relative to the *clip's own* median, so
+they describe how pitch and loudness move, not where the voice sits — i.e.
+habit, not register or timbre.
+
 f0_mean/f0_std are in *semitones relative to the speaker's own median pitch*
 (computed from their genuine enrollment clips), not raw Hz — this keeps the
 fingerprint comparable across speakers with different pitch registers and
@@ -28,6 +37,11 @@ F0_MIN_HZ = 75
 F0_MAX_HZ = 500
 MIN_PAUSE_S = 0.05  # ignore sub-50ms gaps (VAD frame noise, not real pauses)
 PAUSE_BOUNDARY_EPS = 0.02  # pauses touching clip start/end are silence, not speech pauses
+PYIN_FRAME = 1024  # 64ms at 16kHz: >= 2 periods at F0_MIN_HZ
+PYIN_HOP = 256  # 16ms: fine enough to time voiced/unvoiced stretches (syllable ~100-250ms)
+FINAL_WINDOW_S = 0.3  # last 300ms of voicing = the utterance's boundary tone
+MIN_VOICED_RUN_FRAMES = 2  # shorter voiced blips are pYIN noise, not vowels
+MAX_UNVOICED_RUN_S = 0.3  # longer unvoiced stretches inside speech are pauses, not consonants
 
 
 @dataclass
@@ -46,6 +60,14 @@ class RawClipFeatures:
     npvi: float
     jitter: float
     shimmer: float
+    f0_range: float
+    f0_slope: float
+    f0_velocity: float
+    f0_final_move: float
+    energy_slope: float
+    voiced_fraction: float
+    varco_v: float
+    varco_uv: float
 
 
 FEATURE_COLUMNS = [
@@ -64,6 +86,14 @@ FEATURE_COLUMNS = [
     "npvi",
     "jitter",
     "shimmer",
+    "f0_range",
+    "f0_slope",
+    "f0_velocity",
+    "f0_final_move",
+    "energy_slope",
+    "voiced_fraction",
+    "varco_v",
+    "varco_uv",
 ]
 
 
@@ -81,11 +111,95 @@ def _internal_pauses(clip: PreprocessedClip) -> list[float]:
     return durs
 
 
-def _f0_track_hz(clip: PreprocessedClip) -> np.ndarray:
+def _pitch_track(clip: PreprocessedClip) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """(frame times s, f0 Hz with NaN where unvoiced, voiced flag)."""
     f0, voiced_flag, _ = librosa.pyin(
-        clip.audio, fmin=F0_MIN_HZ, fmax=F0_MAX_HZ, sr=clip.sr
+        clip.audio,
+        fmin=F0_MIN_HZ,
+        fmax=F0_MAX_HZ,
+        sr=clip.sr,
+        frame_length=PYIN_FRAME,
+        hop_length=PYIN_HOP,
     )
-    return f0[voiced_flag]
+    times = librosa.times_like(f0, sr=clip.sr, hop_length=PYIN_HOP)
+    return times, f0, voiced_flag.astype(bool)
+
+
+def _runs(flags: np.ndarray) -> list[tuple[bool, int]]:
+    """Run-length encode a boolean array: [(value, length), ...]."""
+    runs = []
+    for v in flags:
+        if runs and runs[-1][0] == v:
+            runs[-1] = (v, runs[-1][1] + 1)
+        else:
+            runs.append((bool(v), 1))
+    return runs
+
+
+def _pitch_dynamics(times: np.ndarray, f0: np.ndarray, voiced: np.ndarray) -> dict:
+    """How pitch *moves*, in semitones relative to the clip's own median —
+    independent of the speaker's register:
+      f0_range       p90-p10 spread (st)
+      f0_slope       linear trend over the utterance (st/s; declination)
+      f0_velocity    mean |pitch change| between adjacent voiced frames (st/s)
+      f0_final_move  last 300ms of voicing vs clip median (st; boundary rise/fall)
+    """
+    nan = dict(f0_range=np.nan, f0_slope=np.nan, f0_velocity=np.nan, f0_final_move=np.nan)
+    if voiced.sum() < 10:
+        return nan
+    st = np.full_like(f0, np.nan)
+    st[voiced] = 12 * np.log2(f0[voiced] / np.median(f0[voiced]))
+    t, v = times[voiced], st[voiced]
+    hop_s = times[1] - times[0]
+    adjacent = voiced[1:] & voiced[:-1]
+    return dict(
+        f0_range=float(np.percentile(v, 90) - np.percentile(v, 10)),
+        f0_slope=float(np.polyfit(t, v, 1)[0]),
+        f0_velocity=float(np.mean(np.abs(np.diff(st)[adjacent])) / hop_s) if adjacent.any() else np.nan,
+        f0_final_move=float(np.mean(v[t >= t[-1] - FINAL_WINDOW_S])),
+    )
+
+
+def _rhythm(times: np.ndarray, voiced: np.ndarray) -> dict:
+    """Voiced/unvoiced interval rhythm metrics, a forced-alignment-free proxy
+    for Ramus/Dellwo vocalic/consonantal metrics:
+      voiced_fraction  %V-like: voiced time / (voiced + short unvoiced) time
+      varco_v          100 * std/mean of voiced-run durations
+      varco_uv         100 * std/mean of within-speech unvoiced-run durations
+    Unvoiced runs longer than MAX_UNVOICED_RUN_S are pauses, so excluded.
+    """
+    nan = dict(voiced_fraction=np.nan, varco_v=np.nan, varco_uv=np.nan)
+    idx = np.flatnonzero(voiced)
+    if len(idx) < 10:
+        return nan
+    hop_s = times[1] - times[0]
+    runs = _runs(voiced[idx[0] : idx[-1] + 1])  # trim leading/trailing silence
+    v_durs = np.array([n * hop_s for val, n in runs if val and n >= MIN_VOICED_RUN_FRAMES])
+    uv_durs = np.array([n * hop_s for val, n in runs if not val and n * hop_s <= MAX_UNVOICED_RUN_S])
+
+    def varco(d: np.ndarray) -> float:
+        return float(100 * np.std(d) / np.mean(d)) if len(d) >= 3 else np.nan
+
+    total = v_durs.sum() + uv_durs.sum()
+    return dict(
+        voiced_fraction=float(v_durs.sum() / total) if total > 0 else np.nan,
+        varco_v=varco(v_durs),
+        varco_uv=varco(uv_durs),
+    )
+
+
+def _energy_slope(clip: PreprocessedClip) -> float:
+    """Loudness trend over speech frames (dB/s) — does the speaker trail off?"""
+    hop = 256
+    rms = librosa.feature.rms(y=clip.audio, frame_length=512, hop_length=hop)[0]
+    t = librosa.times_like(rms, sr=clip.sr, hop_length=hop)
+    in_speech = np.zeros_like(t, dtype=bool)
+    for seg in clip.speech_segments:
+        in_speech |= (t >= seg.start) & (t < seg.end)
+    if in_speech.sum() < 10:
+        return np.nan
+    db = 20 * np.log10(rms[in_speech] + 1e-9)
+    return float(np.polyfit(t[in_speech], db, 1)[0])
 
 
 def _energy_stats(clip: PreprocessedClip) -> tuple[float, float]:
@@ -143,13 +257,14 @@ def extract_raw_features(
     energy_mean, energy_std = _energy_stats(clip)
     pause_durs = _internal_pauses(clip)
     jitter, shimmer = _jitter_shimmer(clip)
+    times, f0, voiced = _pitch_track(clip)
 
     return RawClipFeatures(
         speaker=speaker,
         clip_id=os.path.splitext(os.path.basename(path))[0],
         label=label,
         tts_system=tts_system,
-        voiced_f0_hz=_f0_track_hz(clip),
+        voiced_f0_hz=f0[voiced],
         energy_mean=energy_mean,
         energy_std=energy_std,
         speaking_rate_mean=_speaking_rate(clip, onsets),
@@ -159,6 +274,9 @@ def extract_raw_features(
         npvi=_npvi(onsets),
         jitter=jitter,
         shimmer=shimmer,
+        energy_slope=_energy_slope(clip),
+        **_pitch_dynamics(times, f0, voiced),
+        **_rhythm(times, voiced),
     )
 
 
@@ -199,6 +317,14 @@ def to_row(r: RawClipFeatures, f0_ref_hz: float) -> dict:
         "npvi": r.npvi,
         "jitter": r.jitter,
         "shimmer": r.shimmer,
+        "f0_range": r.f0_range,
+        "f0_slope": r.f0_slope,
+        "f0_velocity": r.f0_velocity,
+        "f0_final_move": r.f0_final_move,
+        "energy_slope": r.energy_slope,
+        "voiced_fraction": r.voiced_fraction,
+        "varco_v": r.varco_v,
+        "varco_uv": r.varco_uv,
     }
 
 
