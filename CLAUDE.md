@@ -108,6 +108,11 @@ There's no special tooling — just discipline:
 - **Results on round 2**: held-out s21–s30 vs both models → 38/40 correct, ROC-AUC 1.00 (2 krishiv genuine false-rejects, s21/s30, high-shimmer — likely session drift). LOO impostor eval: full prosodic AUC 0.97, MFCC 0.96, but **prosodic without pitch level only 0.61** — on matched read text the two speakers separate mainly by pitch register/timbre; the "habit" features individually separate weakly (best f0_std 0.76). This is the clone-relevant number and it's weak; round-1's stronger pause/voice-quality separation looks partly like a room/text artifact (krishiv's recordings ~22 dB SNR vs mary's ~30). Real test is still clones of s21–s30.
 - [ ] Update notebook, `docs/results.tex`, `DEMO_SCRIPT.md` with the above — next
 
+**Stage 3b — Prosody-only fingerprint (register/timbre-independent)** — owner: Claude session (Mary) — [in progress 2026-10-05]
+- [ ] Drop pitch register (f0_mean), loudness level (energy_mean) and voice quality (jitter/shimmer) from the fingerprint/detector; keep them as CSV columns for comparison
+- [ ] Add register-independent prosodic features: pitch range/slope/velocity/final movement, energy slope, voiced/unvoiced rhythm metrics (%V, VarcoV, VarcoUV)
+- [ ] Held-out (s01–s20 enroll → s21–s30 test) + LOO evaluation in `impostor_eval.py`; update data contract
+
 **Stage 5b — Stretch: supervised model** — [unclaimed]
 - [ ] SVM/RF trained on labeled genuine+synthetic features
 - [ ] Implement in `src/models/supervised.py`
