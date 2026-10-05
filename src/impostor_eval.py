@@ -67,9 +67,10 @@ PROSODY_GROUPS = {
 }
 
 
-def load_table() -> tuple[pd.DataFrame, dict]:
-    """Genuine prosodic + MFCC features joined per clip, with `sentence`
-    parsed from `<speaker>_sNN` clip ids (NaN for other names)."""
+def load_table(include_synthetic: bool = False) -> tuple[pd.DataFrame, dict]:
+    """Prosodic + MFCC features joined per clip (genuine only unless
+    include_synthetic), with `sentence` parsed from `<speaker>_sNN` clip ids
+    (NaN for other names, e.g. 2nd takes `_sNN_t2`)."""
     pros = pd.read_csv(FEATURES_CSV)
     spec = pd.read_csv(SPECTRAL_CSV)
     df = pros.merge(
@@ -77,7 +78,9 @@ def load_table() -> tuple[pd.DataFrame, dict]:
         on=["speaker", "clip_id", "label"],
         how="inner",
     )
-    df = df[df["label"] == "genuine"].reset_index(drop=True)
+    if not include_synthetic:
+        df = df[df["label"] == "genuine"]
+    df = df.reset_index(drop=True)
     df["sentence"] = [
         int(m.group(1)) if (m := re.search(r"_s(\d+)$", c)) else np.nan for c in df["clip_id"]
     ]
@@ -136,6 +139,27 @@ def trial_scores(
             raise ValueError(protocol)
 
     return pd.DataFrame(out, columns=["target", "clip_speaker", "clip_id", "is_genuine", "score"])
+
+
+def clone_trials(df: pd.DataFrame, f0_refs: dict, components: Components) -> pd.DataFrame:
+    """The real task. Per target T: enroll on T's genuine s01–s20; genuine
+    trials = T's genuine s21–s30; negative trials = synthetic clones *of T*
+    (any tts_system), which were generated from the same s21–s30 text.
+    Synthetic rows in features.csv are already in T's F0 frame (features.py
+    references a speaker's clones to that speaker's genuine median)."""
+    out = []
+    for target in sorted(df.loc[df["label"] == "synthetic", "speaker"].unique()):
+        own = df[(df["speaker"] == target) & (df["label"] == "genuine")]
+        clones = df[(df["speaker"] == target) & (df["label"] == "synthetic")]
+        enroll = own[own["sentence"] < HELDOUT_FIRST_SENTENCE]
+        test = own[own["sentence"] >= HELDOUT_FIRST_SENTENCE]
+        det = FingerprintDistanceDetector.train(target, enroll, f0_refs[target], components=components)
+        out += [(target, "genuine", c, 1, float(s)) for c, s in zip(test["clip_id"], det.decision(test))]
+        out += [
+            (target, tts, c, 0, float(s))
+            for tts, c, s in zip(clones["tts_system"], clones["clip_id"], det.decision(clones))
+        ]
+    return pd.DataFrame(out, columns=["target", "source", "clip_id", "is_genuine", "score"])
 
 
 def summarize(trials: pd.DataFrame) -> dict:
@@ -202,6 +226,17 @@ if __name__ == "__main__":
     for protocol in ["heldout", "loo"]:
         print(f"\n== {protocol} ==")
         print(comparison_table(df, f0_refs, protocol).set_index("system")[cols].to_string())
+
+    dfs, _ = load_table(include_synthetic=True)
+    if (dfs["label"] == "synthetic").any():
+        print("\n== clones: genuine s21–s30 vs synthetic clones of the same speaker ==")
+        rows = [
+            {"system": name, **summarize(clone_trials(dfs, f0_refs, comps))}
+            for name, comps in SYSTEMS.items()
+        ]
+        print(pd.DataFrame(rows).set_index("system")[cols].to_string())
+    else:
+        print("\n(no synthetic clones in features.csv yet — clone evaluation skipped)")
 
     print("\nBlend: share of distance per component (heldout):")
     print(blend_shares(df, f0_refs).to_string())

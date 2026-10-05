@@ -35,6 +35,7 @@ from features import _pitch_track
 from preprocessing import preprocess
 
 GENUINE_ROOT = "data/genuine"
+SYNTHETIC_ROOT = "data/synthetic"
 # Fixed channel scales so semitones and dB contribute comparably to the DTW
 # frame distance (roughly one within-clip std of each); fixed, not
 # per-clip z-normalization, so a speaker's habitual pitch *range* still counts.
@@ -146,9 +147,20 @@ def td_threshold(speaker: str, exclude_sentence: int | None = None) -> float | N
     return float(np.quantile(d, TD_QUANTILE)) if len(d) >= 3 else None
 
 
+def clone_takes(speaker: str, sentence: int) -> list[str]:
+    """Synthetic clones of `speaker` reading `sentence`, from any TTS system
+    (data/synthetic/<speaker>/<tts_system>/<speaker>_sNN.*)."""
+    pattern = re.compile(TAKE_RE.format(speaker=re.escape(speaker), n=sentence))
+    return sorted(
+        p for p in glob.glob(os.path.join(SYNTHETIC_ROOT, speaker, "*", "*"))
+        if pattern.match(os.path.splitext(os.path.basename(p))[0])
+    )
+
+
 def text_dependent_trials(speakers: list[str]) -> list[dict]:
     """For each target T and sentence n: reference = T's take 1 of n;
-    genuine = T's later takes of n; impostor = every take of n by others."""
+    genuine = T's later takes of n; impostor = every take of n by other
+    humans; clone = synthetic clones of T reading n."""
     cache: dict[str, Contour] = {}
 
     def c(p: str) -> Contour:
@@ -163,14 +175,16 @@ def text_dependent_trials(speakers: list[str]) -> list[dict]:
             if not takes:
                 continue
             ref = c(takes[0])
-            cands = [(p, 1) for p in takes[1:]] + [
-                (p, 0) for other in speakers if other != target for p in _all_takes(other, n)
-            ]
-            for p, is_genuine in cands:
+            cands = (
+                [(p, "genuine") for p in takes[1:]]
+                + [(p, "impostor") for other in speakers if other != target for p in _all_takes(other, n)]
+                + [(p, "clone") for p in clone_takes(target, n)]
+            )
+            for p, kind in cands:
                 m = compare(ref, c(p))
                 trials.append(
-                    dict(target=target, sentence=n, clip=os.path.basename(p), is_genuine=is_genuine,
-                         td_distance=td_distance(m), **m)
+                    dict(target=target, sentence=n, clip=os.path.basename(p), kind=kind,
+                         is_genuine=int(kind == "genuine"), td_distance=td_distance(m), **m)
                 )
     return trials
 
@@ -186,12 +200,18 @@ if __name__ == "__main__":
     speakers = [s for s in speakers if os.path.isdir(os.path.join(GENUINE_ROOT, s))]
     t = pd.DataFrame(text_dependent_trials(speakers))
     pd.set_option("display.float_format", "{:.3f}".format)
-    print(f"{len(t)} trials: {int(t.is_genuine.sum())} genuine pairs, {int((1 - t.is_genuine).sum())} impostor pairs")
-    print(t.groupby("is_genuine")[["contour_dist", "timing_dist", "tempo_ratio", "td_distance"]].mean().to_string())
-    if t.is_genuine.nunique() < 2:
+    metrics = ["contour_dist", "timing_dist", "tempo_ratio", "td_distance"]
+    print(t["kind"].value_counts().to_string())
+    print(t.groupby("kind")[metrics].mean().to_string())
+    if "genuine" not in set(t["kind"]):
         print("\nNo genuine same-sentence pairs yet — record 2nd takes of s21–s30 as "
               "<speaker>_sNN_t2 (see docs/RECORDING_SCRIPT.md) for ROC-AUC/EER.")
     else:
-        for metric in ["contour_dist", "timing_dist", "tempo_ratio", "td_distance"]:
-            m = evaluate(t.is_genuine.to_numpy(), -t[metric].to_numpy())
-            print(f"{metric:13s} ROC-AUC {m['roc_auc']:.3f}  EER {m['eer']:.3f}")
+        for negative in ["impostor", "clone"]:
+            sub = t[t["kind"].isin(["genuine", negative])]
+            if sub["kind"].nunique() < 2:
+                continue
+            print(f"\ngenuine vs {negative}:")
+            for metric in metrics:
+                m = evaluate(sub.is_genuine.to_numpy(), -sub[metric].to_numpy())
+                print(f"  {metric:13s} ROC-AUC {m['roc_auc']:.3f}  EER {m['eer']:.3f}")
