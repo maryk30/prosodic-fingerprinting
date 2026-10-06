@@ -125,10 +125,14 @@ There's no special tooling — just discipline:
 - [ ] Next: once 2nd takes land — text-dependent eval; decide whether to fold `td_distance` into the blend as a prosody sub-component.
 - [ ] Update notebook / `docs/results.tex` / `DEMO_SCRIPT.md` / `demo.sh` (demo.sh enrolls `*.m4a`, which now includes held-out s21–s30)
 
-**Stage 1c — Local voice clones (XTTS-v2), no API key** — owner: Claude session (Mary) — [in progress 2026-10-05]
-- [ ] Separate `.venv-tts` (coqui-tts; heavy torch deps kept out of the main venv). Clone s21–s30 for krishiv + mary using s01–s20 as reference audio → `data/synthetic/<speaker>/xtts/<speaker>_sNN.wav`. XTTS-v2 is CPML (non-commercial) — fine for coursework.
-- [ ] Fix `cli.py enroll` dropping a speaker's non-enrolled (held-out) rows from features.csv/spectral_features.csv
-- [ ] Clone eval: held-out genuine s21–s30 vs XTTS clones of s21–s30, blend / prosody-only / register+timbre / text-dependent
+**Stage 1c — Local voice clones (XTTS-v2), no API key** — owner: Claude session (Mary) — [done 2026-10-06]
+- [x] `.venv-tts` pinned in `requirements-tts.txt` (torch 2.8 + torchaudio 2.8 — torch ≥2.9 needs torchcodec; transformers <5 — 5.x breaks XTTS). Coqui's downloader stalled at 794 MB on a flaky connection; weights now come from a resumable HF download (`coqui/XTTS-v2` → `~/Library/Application Support/tts/xtts_v2_hf`, used automatically by `src/generate_clones.py`). ~10 s/sentence on M3 CPU.
+- [x] 30 clones (s21–s30 × krishiv/mary/raghav, reference audio = s01–s20 only) in `data/synthetic/<speaker>/xtts/`. `raghav_s26.wav` is a 21 s XTTS babble failure → auto-skipped (>15 s). XTTS clones sit ~3 st *below* each speaker's genuine pitch (krishiv 110 vs 134 Hz, mary 193 vs 225, raghav 109 vs 127).
+- [x] `cli.py enroll` fix: upserts enrolled clips only; speaker's other rows kept and f0_mean re-referenced to the new reference.
+- **Clone results (held-out genuine s21–s30 vs clones of the same sentences)**: blend (capped) AUC **0.962**, EER 8.4%, 97% clones rejected / 83% genuine accepted; prosody-only 0.874 (0.99 krishiv, 0.99 mary, **0.51 raghav**); register+timbre 0.977.
+- **What gives XTTS away** (per-feature, speaker-normalized): shimmer (clones too smooth, AUC 1.00), energy_slope (clones fade out −3.3 dB/s vs +0.56, 0.97), energy_std (0.92), f0_mean (−2.7 st, 0.97), pause durations (clones pause longer, 0.71 — why raghav, a heavy pauser, isn't caught). Pitch movement and rhythm (f0_velocity, f0_range, nPVI, VarcoV…) are reproduced ~perfectly (AUC ≈ 0.5). So the prosodic signal vs XTTS is loudness dynamics + pauses, not intonation/rhythm habits — and may be XTTS-specific.
+- **Text-dependent (contour.py)**: clones are *farther* from the real speaker's reading of the same sentence than other humans are (td_distance 2.02 vs 1.74; contour 1.15 vs 0.86); krishiv/mary clearly, raghav level. Needs 2nd takes to know the genuine same-sentence distance.
+- 3 speakers, genuine impostor eval (held-out): blend capped 0.932, prosody-only 0.816; prosody now drives 63% of the impostor gap; pauses are the most useful prosody group (raghav).
 
 **Stage 1b — Third speaker** — owner: team — [recorded 2026-10-06]
 - [x] `raghav` recorded 2026-10-06: 30 sentences (files arrived as "New Recording N"; renamed to `raghav_sNN` after checking the order — timestamps strictly sequential, and per-sentence durations correlate 0.64 with mary's vs ~0 when shifted by one). Valid audio, no clipping, SNR ~21 dB (same as others), quieter recording level.
