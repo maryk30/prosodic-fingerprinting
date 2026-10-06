@@ -134,6 +134,11 @@ There's no special tooling — just discipline:
 - **Text-dependent (contour.py)**: clones are *farther* from the real speaker's reading of the same sentence than other humans are (td_distance 2.02 vs 1.74; contour 1.15 vs 0.86); krishiv/mary clearly, raghav level. Needs 2nd takes to know the genuine same-sentence distance.
 - 3 speakers, genuine impostor eval (held-out): blend capped 0.932, prosody-only 0.816; prosody now drives 63% of the impostor gap; pauses are the most useful prosody group (raghav).
 
+**Stage 1d — Second cloner (F5-TTS) + accent check** — owner: Claude session (Mary) — [in progress 2026-10-06]
+- [ ] `.venv-f5` (separate: F5's deps may conflict with the XTTS pins). Clone s21–s30 × 3 speakers → `data/synthetic/<speaker>/f5tts/`, reference = their own s01–s20 audio + known sentence text.
+- [ ] Accent check (SpeechBrain CommonAccent ECAPA, 16 English accents): genuine vs XTTS vs F5 clones. Target per user: krishiv + raghav Indian, mary English. F5/XTTS have no accent control — accent comes from the reference audio — so this verifies rather than sets it.
+- [ ] Clone eval per cloner + cross-cloner (does what catches XTTS also catch F5?)
+
 **Stage 1b — Third speaker** — owner: team — [recorded 2026-10-06]
 - [x] `raghav` recorded 2026-10-06: 30 sentences (files arrived as "New Recording N"; renamed to `raghav_sNN` after checking the order — timestamps strictly sequential, and per-sentence durations correlate 0.64 with mary's vs ~0 when shifted by one). Valid audio, no clipping, SNR ~21 dB (same as others), quieter recording level.
 - Notable: raghav's pitch register (median ~125 Hz) ≈ krishiv's (~132 Hz) — register can't separate them, a natural prosody-only test. He pauses far more: 4.7 internal pauses/clip vs ~0.5, incl. 47 pauses ≥200 ms (krishiv 3, mary 5) — real phrasing pauses, not a VAD artifact.
