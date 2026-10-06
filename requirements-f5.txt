@@ -1,0 +1,13 @@
+# Separate environment for F5-TTS clones (src/generate_clones_f5.py).
+# Its own venv because f5-tts pulls transformers 5.x, which breaks XTTS
+# (see requirements-tts.txt).
+#
+#   /opt/homebrew/bin/python3.11 -m venv .venv-f5
+#   .venv-f5/bin/pip install -r requirements-f5.txt
+#
+# torch/torchaudio pinned to 2.8 to match the XTTS env and avoid torch>=2.9's
+# torchcodec audio-IO change. Model weights (SWivid/F5-TTS, F5TTS_v1_Base)
+# and the vocos vocoder download from Hugging Face on first run.
+torch==2.8.0
+torchaudio==2.8.0
+f5-tts==1.1.22

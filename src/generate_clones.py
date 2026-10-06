@@ -18,16 +18,19 @@ use only); setting COQUI_TOS_AGREED below accepts it for this coursework.
 """
 
 import argparse
-import glob
 import os
-import re
 import subprocess
 import tempfile
 
 os.environ.setdefault("COQUI_TOS_AGREED", "1")
 
+import sys  # noqa: E402
+
 import torch  # noqa: E402
 from TTS.api import TTS  # noqa: E402
+
+sys.path.insert(0, os.path.dirname(__file__))
+from clone_common import CLONE_SENTENCES, ENROLL_SENTENCES, enrollment_clips, sentences  # noqa: E402
 
 MODEL = "tts_models/multilingual/multi-dataset/xtts_v2"
 # Coqui's own downloader stalled mid-file on a flaky connection; a resumable
@@ -37,27 +40,7 @@ MODEL = "tts_models/multilingual/multi-dataset/xtts_v2"
 XTTS_DIR = os.path.expanduser(
     os.environ.get("XTTS_DIR", "~/Library/Application Support/tts/xtts_v2_hf")
 )
-SCRIPT = "docs/RECORDING_SCRIPT.md"
-ENROLL_SENTENCES = range(1, 21)
-CLONE_SENTENCES = range(21, 31)
 TTS_SYSTEM = "xtts"
-
-
-def sentences() -> dict[int, str]:
-    with open(SCRIPT) as f:
-        return {int(m.group(1)): m.group(2).strip() for m in re.finditer(r"^(\d+)\. (.+)$", f.read(), re.M)}
-
-
-def enrollment_clips(speaker: str) -> list[str]:
-    """The speaker's take-1 recordings of s01–s20 (zero padding optional)."""
-    out = []
-    for n in ENROLL_SENTENCES:
-        pat = re.compile(rf"^{re.escape(speaker)}_s0*{n}$")
-        out += [
-            p for p in glob.glob(f"data/genuine/{speaker}/*")
-            if pat.match(os.path.splitext(os.path.basename(p))[0])
-        ]
-    return sorted(out)
 
 
 def to_wav(paths: list[str], out_dir: str) -> list[str]:

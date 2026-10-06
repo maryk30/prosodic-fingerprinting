@@ -13,3 +13,7 @@ coqui-tts==0.27.5
 torch==2.8.0
 torchaudio==2.8.0
 transformers>=4.43,<5
+
+# Accent check (src/accent_check.py) runs here too.
+speechbrain==1.1.1
+pandas
