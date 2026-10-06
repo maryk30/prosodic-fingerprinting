@@ -142,6 +142,10 @@ There's no special tooling — just discipline:
 - [x] **No 2nd takes (user decision)** → text-dependent check recast as a **naturalness check** (`src/contour.py`): candidate claiming X vs the *other* enrolled speakers' readings of the same sentence; per-speaker threshold = 90th pct on enrollment sentences s01–s20 (`data/features/naturalness_thresholds.json`); `cli.py score ... --sentence N`. Held-out: **F5 AUC 0.964, EER 3.3%, 93% rejected / 87% genuine accepted**; XTTS only 0.657 (50% rejected). Mean distance genuine ~1.7, XTTS ~2.05, F5 3.0–3.4. Checks "read like a person", not "is speaker X"; only 2 cohort readers/sentence → noisy. Complements the blend (XTTS caught by the blend, F5 by both).
 - Report + deck drafts (claude.ai Docs / Slides artifacts) updated with these numbers.
 
+**Stage 10 — Paper + VoiceGuard Lab front end** — owner: Claude session (Mary) — [in progress 2026-10-06]
+- [ ] `docs/paper/` — LaTeX paper in the team's Woxsen report format (title page, contents, abstract, sections, figures, references), compiled to PDF; figures from `src/make_figures.py`
+- [ ] `web/` — "VoiceGuard Lab": interactive pipeline visualizer over the held-out clips (VAD, pitch/loudness contours, features vs fingerprint, component distances, verdict, naturalness overlay). Data from `src/export_viz.py` (derived contours/features only — no audio). Also published as a private claude.ai artifact.
+
 **Stage 1b — Third speaker** — owner: team — [recorded 2026-10-06]
 - [x] `raghav` recorded 2026-10-06: 30 sentences (files arrived as "New Recording N"; renamed to `raghav_sNN` after checking the order — timestamps strictly sequential, and per-sentence durations correlate 0.64 with mary's vs ~0 when shifted by one). Valid audio, no clipping, SNR ~21 dB (same as others), quieter recording level.
 - Notable: raghav's pitch register (median ~125 Hz) ≈ krishiv's (~132 Hz) — register can't separate them, a natural prosody-only test. He pauses far more: 4.7 internal pauses/clip vs ~0.5, incl. 47 pauses ≥200 ms (krishiv 3, mary 5) — real phrasing pauses, not a VAD artifact.
