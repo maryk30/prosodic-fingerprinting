@@ -130,8 +130,10 @@ There's no special tooling — just discipline:
 - [ ] Fix `cli.py enroll` dropping a speaker's non-enrolled (held-out) rows from features.csv/spectral_features.csv
 - [ ] Clone eval: held-out genuine s21–s30 vs XTTS clones of s21–s30, blend / prosody-only / register+timbre / text-dependent
 
-**Stage 1b — Third speaker** — owner: team — [planned 2026-10-05]
-- [ ] Record a 3rd speaker (ordinary, less polished speech than mary/krishiv — chosen as typical, *not* for being different) with the same protocol: all 30 sentences + 2nd takes of s21–s30, same phone + room as mary/krishiv. Clone them too once clones are generated. Code picks up `data/genuine/<name>/` automatically.
+**Stage 1b — Third speaker** — owner: team — [recorded 2026-10-06]
+- [x] `raghav` recorded 2026-10-06: 30 sentences (files arrived as "New Recording N"; renamed to `raghav_sNN` after checking the order — timestamps strictly sequential, and per-sentence durations correlate 0.64 with mary's vs ~0 when shifted by one). Valid audio, no clipping, SNR ~21 dB (same as others), quieter recording level.
+- Notable: raghav's pitch register (median ~125 Hz) ≈ krishiv's (~132 Hz) — register can't separate them, a natural prosody-only test. He pauses far more: 4.7 internal pauses/clip vs ~0.5, incl. 47 pauses ≥200 ms (krishiv 3, mary 5) — real phrasing pauses, not a VAD artifact.
+- [ ] 2nd takes of s21–s30 (all three speakers) still not recorded.
 
 **Stage 5b — Stretch: supervised model** — [unclaimed]
 - [ ] SVM/RF trained on labeled genuine+synthetic features

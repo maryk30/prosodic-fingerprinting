@@ -30,6 +30,13 @@ import torch  # noqa: E402
 from TTS.api import TTS  # noqa: E402
 
 MODEL = "tts_models/multilingual/multi-dataset/xtts_v2"
+# Coqui's own downloader stalled mid-file on a flaky connection; a resumable
+# Hugging Face download into this dir is preferred when present:
+#   huggingface_hub.snapshot_download("coqui/XTTS-v2", local_dir=XTTS_DIR,
+#       allow_patterns=["model.pth", "config.json", "vocab.json", "speakers_xtts.pth"])
+XTTS_DIR = os.path.expanduser(
+    os.environ.get("XTTS_DIR", "~/Library/Application Support/tts/xtts_v2_hf")
+)
 SCRIPT = "docs/RECORDING_SCRIPT.md"
 ENROLL_SENTENCES = range(1, 21)
 CLONE_SENTENCES = range(21, 31)
@@ -71,7 +78,11 @@ def main() -> None:
 
     text = sentences()
     torch.manual_seed(0)
-    tts = TTS(MODEL).to("cpu")  # XTTS has ops unsupported on Apple MPS
+    if os.path.exists(os.path.join(XTTS_DIR, "model.pth")):
+        tts = TTS(model_path=XTTS_DIR, config_path=os.path.join(XTTS_DIR, "config.json"))
+    else:
+        tts = TTS(MODEL)
+    tts = tts.to("cpu")  # XTTS has ops unsupported on Apple MPS
 
     for speaker in args.speakers:
         refs = enrollment_clips(speaker)
