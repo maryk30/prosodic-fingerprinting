@@ -22,6 +22,8 @@ data/features/*.parquet
 data/features/fingerprints/
 data/features/models/
 data/features/f0_reference.json
+data/features/naturalness_thresholds.json
+data/features/accent.csv
 data/features/fingerprint_visuals/
 
 # Notebooks checkpoints
