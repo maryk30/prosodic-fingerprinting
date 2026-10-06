@@ -230,11 +230,15 @@ if __name__ == "__main__":
     dfs, _ = load_table(include_synthetic=True)
     if (dfs["label"] == "synthetic").any():
         print("\n== clones: genuine s21–s30 vs synthetic clones of the same speaker ==")
-        rows = [
-            {"system": name, **summarize(clone_trials(dfs, f0_refs, comps))}
-            for name, comps in SYSTEMS.items()
-        ]
-        print(pd.DataFrame(rows).set_index("system")[cols].to_string())
+        rows = []
+        for name, comps in SYSTEMS.items():
+            trials = clone_trials(dfs, f0_refs, comps)
+            genuine = trials[trials["is_genuine"] == 1]
+            rows.append({"system": name, "cloner": "all", **summarize(trials)})
+            for tts in sorted(trials.loc[trials["is_genuine"] == 0, "source"].unique()):
+                sub = pd.concat([genuine, trials[trials["source"] == tts]])
+                rows.append({"system": name, "cloner": tts, **summarize(sub)})
+        print(pd.DataFrame(rows).set_index(["system", "cloner"])[cols].to_string())
     else:
         print("\n(no synthetic clones in features.csv yet — clone evaluation skipped)")
 

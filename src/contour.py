@@ -20,10 +20,30 @@ contours directly:
 
 All three are register- and timbre-independent: a clone that perfectly
 copies pitch level and voice colour gets no credit here unless it also
-reproduces how the speaker phrases that sentence.
+reproduces how a person phrases that sentence.
+
+Naturalness check (no second takes needed). Comparing a candidate with the
+claimed speaker's own earlier reading would need two genuine readings of
+the same sentence to calibrate, which we don't have. Instead, every
+enrolled speaker reads every prompt sentence, so a candidate claiming to be
+speaker X is compared with the *other* enrolled speakers' readings of the
+same sentence (a cohort): its naturalness distance is the mean
+contour+timing distance to them. A real person reads a sentence within the
+normal human spread; a clone that phrases it unnaturally lands further out.
+
+  - calibrate on the enrollment sentences s01–s20: each speaker's reading
+    vs the cohort gives the genuine spread; per-speaker threshold = its
+    90th percentile (~10% genuine false-rejects by construction)
+  - test on the held-out sentences s21–s30: genuine readings vs clones
+
+This checks "is this read the way people read this sentence", not "is this
+speaker X" — the clip-level fingerprint does the latter. With only two
+cohort readers per sentence the distance is noisy; more enrolled speakers
+make it steadier.
 """
 
 import glob
+import json
 import os
 import re
 from dataclasses import dataclass
@@ -107,111 +127,116 @@ def find_take(speaker: str, sentence: int, take: int = 1, root: str = GENUINE_RO
     return None
 
 
-TD_SENTENCES = range(21, 31)  # the held-out / clone sentences in docs/RECORDING_SCRIPT.md
-TD_QUANTILE = 0.9
+ENROLL_SENTENCES = range(1, 21)  # calibration: every speaker read these
+TEST_SENTENCES = range(21, 31)  # held out; also the text the clones speak
+THRESHOLD_QUANTILE = 0.9
+THRESHOLDS_JSON = "data/features/naturalness_thresholds.json"
 
 
 def td_distance(m: dict) -> float:
     """Single text-dependent distance: melody/loudness shape + local timing.
     tempo_ratio is reported but not included — overall reading speed varies
-    a lot between takes of the same speaker."""
+    a lot between readings."""
     return m["contour_dist"] + m["timing_dist"]
 
 
-def _all_takes(speaker: str, sentence: int, root: str = GENUINE_ROOT) -> list[str]:
-    takes, k = [], 1
-    while (p := find_take(speaker, sentence, k, root)) or k == 1:
-        if p:
-            takes.append(p)
-        k += 1
-    return takes
+def enrolled_speakers(root: str = GENUINE_ROOT) -> list[str]:
+    return sorted(d for d in os.listdir(root) if os.path.isdir(os.path.join(root, d)))
 
 
-def genuine_pair_distances(speaker: str, exclude_sentence: int | None = None) -> list[float]:
-    """Distances between take 1 and later takes of the same sentence by the
-    same speaker — the spread of genuine same-sentence variation, used to
-    calibrate the accept threshold. Empty until 2nd takes are recorded."""
-    out = []
-    for n in TD_SENTENCES:
-        if n == exclude_sentence:
-            continue
-        takes = _all_takes(speaker, n)
-        if len(takes) >= 2:
-            ref = contour(takes[0])
-            out += [td_distance(compare(ref, contour(t))) for t in takes[1:]]
-    return out
-
-
-def td_threshold(speaker: str, exclude_sentence: int | None = None) -> float | None:
-    d = genuine_pair_distances(speaker, exclude_sentence)
-    return float(np.quantile(d, TD_QUANTILE)) if len(d) >= 3 else None
-
-
-def clone_takes(speaker: str, sentence: int) -> list[str]:
-    """Synthetic clones of `speaker` reading `sentence`, from any TTS system
+def clone_takes(speaker: str, sentence: int) -> list[tuple[str, str]]:
+    """(tts_system, path) for clones of `speaker` reading `sentence`
     (data/synthetic/<speaker>/<tts_system>/<speaker>_sNN.*)."""
     pattern = re.compile(TAKE_RE.format(speaker=re.escape(speaker), n=sentence))
     return sorted(
-        p for p in glob.glob(os.path.join(SYNTHETIC_ROOT, speaker, "*", "*"))
+        (p.split(os.sep)[-2], p)
+        for p in glob.glob(os.path.join(SYNTHETIC_ROOT, speaker, "*", "*"))
         if pattern.match(os.path.splitext(os.path.basename(p))[0])
     )
 
 
-def text_dependent_trials(speakers: list[str]) -> list[dict]:
-    """For each target T and sentence n: reference = T's take 1 of n;
-    genuine = T's later takes of n; impostor = every take of n by other
-    humans; clone = synthetic clones of T reading n."""
-    cache: dict[str, Contour] = {}
+class ContourCache:
+    def __init__(self):
+        self._c: dict[str, Contour] = {}
 
-    def c(p: str) -> Contour:
-        if p not in cache:
-            cache[p] = contour(p)
-        return cache[p]
+    def __call__(self, path: str) -> Contour:
+        if path not in self._c:
+            self._c[path] = contour(path)
+        return self._c[path]
 
+
+def naturalness(candidate: Contour, sentence: int, claimed: str, speakers: list[str], cache: ContourCache) -> float:
+    """Mean contour+timing distance from the candidate to the other enrolled
+    speakers' readings of the same sentence (the claimed speaker's own reading
+    is never used, so genuine and clone trials are scored the same way)."""
+    refs = [find_take(s, sentence) for s in speakers if s != claimed]
+    refs = [r for r in refs if r]
+    if not refs:
+        raise ValueError(f"no cohort readings of sentence {sentence} besides {claimed}")
+    return float(np.mean([td_distance(compare(cache(r), candidate)) for r in refs]))
+
+
+def calibrate(speakers: list[str], cache: ContourCache) -> dict[str, float]:
+    """Per-speaker accept threshold from their enrollment readings."""
+    thresholds = {}
+    for spk in speakers:
+        d = [
+            naturalness(cache(p), n, spk, speakers, cache)
+            for n in ENROLL_SENTENCES
+            if (p := find_take(spk, n))
+        ]
+        thresholds[spk] = float(np.quantile(d, THRESHOLD_QUANTILE))
+    return thresholds
+
+
+def test_trials(speakers: list[str], cache: ContourCache) -> list[dict]:
     trials = []
-    for target in speakers:
-        for n in TD_SENTENCES:
-            takes = _all_takes(target, n)
-            if not takes:
-                continue
-            ref = c(takes[0])
-            cands = (
-                [(p, "genuine") for p in takes[1:]]
-                + [(p, "impostor") for other in speakers if other != target for p in _all_takes(other, n)]
-                + [(p, "clone") for p in clone_takes(target, n)]
-            )
-            for p, kind in cands:
-                m = compare(ref, c(p))
-                trials.append(
-                    dict(target=target, sentence=n, clip=os.path.basename(p), kind=kind,
-                         is_genuine=int(kind == "genuine"), td_distance=td_distance(m), **m)
-                )
+    for spk in speakers:
+        for n in TEST_SENTENCES:
+            cands = [("genuine", p) for p in [find_take(spk, n)] if p] + clone_takes(spk, n)
+            for source, p in cands:
+                try:
+                    d = naturalness(cache(p), n, spk, speakers, cache)
+                except ValueError:
+                    continue
+                trials.append(dict(speaker=spk, sentence=n, source=source,
+                                   is_genuine=int(source == "genuine"), distance=d))
     return trials
+
+
+def load_thresholds() -> dict[str, float]:
+    with open(THRESHOLDS_JSON) as f:
+        return json.load(f)
 
 
 if __name__ == "__main__":
     import sys
+
     import pandas as pd
 
     sys.path.insert(0, os.path.dirname(__file__))
     from eval import evaluate
 
-    speakers = sorted(os.listdir(GENUINE_ROOT))
-    speakers = [s for s in speakers if os.path.isdir(os.path.join(GENUINE_ROOT, s))]
-    t = pd.DataFrame(text_dependent_trials(speakers))
+    speakers = enrolled_speakers()
+    cache = ContourCache()
+    thresholds = calibrate(speakers, cache)
+    with open(THRESHOLDS_JSON, "w") as f:
+        json.dump(thresholds, f, indent=2)
+    print("thresholds (90th pct of enrollment naturalness distance):",
+          {k: round(v, 3) for k, v in thresholds.items()}, "->", THRESHOLDS_JSON)
+
+    t = pd.DataFrame(test_trials(speakers, cache))
+    t["score"] = [thresholds[s] - d for s, d in zip(t["speaker"], t["distance"])]  # >0 = accept
     pd.set_option("display.float_format", "{:.3f}".format)
-    metrics = ["contour_dist", "timing_dist", "tempo_ratio", "td_distance"]
-    print(t["kind"].value_counts().to_string())
-    print(t.groupby("kind")[metrics].mean().to_string())
-    if "genuine" not in set(t["kind"]):
-        print("\nNo genuine same-sentence pairs yet — record 2nd takes of s21–s30 as "
-              "<speaker>_sNN_t2 (see docs/RECORDING_SCRIPT.md) for ROC-AUC/EER.")
-    else:
-        for negative in ["impostor", "clone"]:
-            sub = t[t["kind"].isin(["genuine", negative])]
-            if sub["kind"].nunique() < 2:
-                continue
-            print(f"\ngenuine vs {negative}:")
-            for metric in metrics:
-                m = evaluate(sub.is_genuine.to_numpy(), -sub[metric].to_numpy())
-                print(f"  {metric:13s} ROC-AUC {m['roc_auc']:.3f}  EER {m['eer']:.3f}")
+    print("\nmean naturalness distance, held-out s21-s30:")
+    print(t.pivot_table(index="speaker", columns="source", values="distance").to_string())
+
+    genuine = t[t["is_genuine"] == 1]
+    rows = []
+    for source in ["all"] + sorted(t.loc[t["is_genuine"] == 0, "source"].unique()):
+        sub = t if source == "all" else pd.concat([genuine, t[t["source"] == source]])
+        m = evaluate(sub["is_genuine"].to_numpy(), sub["score"].to_numpy())
+        rows.append({"clones": source, "roc_auc": m["roc_auc"], "eer": m["eer"],
+                     "genuine_accept": (sub.query("is_genuine == 1")["score"] >= 0).mean(),
+                     "clone_reject": (sub.query("is_genuine == 0")["score"] < 0).mean()})
+    print("\n" + pd.DataFrame(rows).set_index("clones").to_string())
