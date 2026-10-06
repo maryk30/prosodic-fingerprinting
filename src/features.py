@@ -193,24 +193,46 @@ def _energy_slope(clip: PreprocessedClip) -> float:
     hop = 256
     rms = librosa.feature.rms(y=clip.audio, frame_length=512, hop_length=hop)[0]
     t = librosa.times_like(rms, sr=clip.sr, hop_length=hop)
-    in_speech = np.zeros_like(t, dtype=bool)
-    for seg in clip.speech_segments:
-        in_speech |= (t >= seg.start) & (t < seg.end)
+    in_speech = speech_mask(t, clip)
     if in_speech.sum() < 10:
         return np.nan
     db = 20 * np.log10(rms[in_speech] + 1e-9)
     return float(np.polyfit(t[in_speech], db, 1)[0])
 
 
+def speech_mask(times: np.ndarray, clip: PreprocessedClip) -> np.ndarray:
+    """True for frame times inside a VAD speech segment.
+
+    Every prosodic and voice-quality feature is measured on speech only.
+    Measuring over the whole clip let non-speech sound leak in: F5-TTS clones
+    carry ~0.6 s of low hum before speech starts in 28/30 clips, which pYIN
+    tracks as a flat "voiced" pitch and which then faked a rising pitch slope
+    and slow pitch movement (Stage 10 finding, 2026-10-06)."""
+    mask = np.zeros(len(times), dtype=bool)
+    for seg in clip.speech_segments:
+        mask |= (times >= seg.start) & (times < seg.end)
+    return mask
+
+
+def _speech_only_audio(clip: PreprocessedClip) -> np.ndarray:
+    """Audio with everything outside speech segments zeroed (Praat finds no
+    periods in silence, so jitter/shimmer then come from speech alone)."""
+    t = np.arange(len(clip.audio)) / clip.sr
+    return np.where(speech_mask(t, clip), clip.audio, 0.0)
+
+
 def _energy_stats(clip: PreprocessedClip) -> tuple[float, float]:
     rms = librosa.feature.rms(y=clip.audio)[0]
+    t = librosa.times_like(rms, sr=clip.sr)
+    rms = rms[speech_mask(t, clip)] if speech_mask(t, clip).any() else rms
     return float(np.mean(rms)), float(np.std(rms))
 
 
 def _onset_times(clip: PreprocessedClip) -> np.ndarray:
-    return librosa.onset.onset_detect(
+    onsets = librosa.onset.onset_detect(
         y=clip.audio, sr=clip.sr, units="time", backtrack=False
     )
+    return onsets[speech_mask(onsets, clip)]
 
 
 def _speaking_rate(clip: PreprocessedClip, onsets: np.ndarray) -> float:
@@ -238,7 +260,7 @@ def _npvi(onsets: np.ndarray) -> float:
 
 def _jitter_shimmer(clip: PreprocessedClip) -> tuple[float, float]:
     try:
-        sound = parselmouth.Sound(clip.audio, sampling_frequency=clip.sr)
+        sound = parselmouth.Sound(_speech_only_audio(clip), sampling_frequency=clip.sr)
         point_process = call(sound, "To PointProcess (periodic, cc)", F0_MIN_HZ, F0_MAX_HZ)
         jitter = call(point_process, "Get jitter (local)", 0, 0, 0.0001, 0.02, 1.3)
         shimmer = call(
@@ -258,6 +280,7 @@ def extract_raw_features(
     pause_durs = _internal_pauses(clip)
     jitter, shimmer = _jitter_shimmer(clip)
     times, f0, voiced = _pitch_track(clip)
+    voiced = voiced & speech_mask(times, clip)
 
     return RawClipFeatures(
         speaker=speaker,

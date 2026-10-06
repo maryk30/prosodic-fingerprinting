@@ -51,8 +51,8 @@ from dataclasses import dataclass
 import librosa
 import numpy as np
 
-from features import _pitch_track
-from preprocessing import preprocess
+from features import _pitch_track, speech_mask
+from preprocessing import MAX_CLIP_DURATION_S, preprocess
 
 GENUINE_ROOT = "data/genuine"
 SYNTHETIC_ROOT = "data/synthetic"
@@ -73,6 +73,7 @@ class Contour:
 def contour(path: str) -> Contour:
     clip = preprocess(path)
     times, f0, voiced = _pitch_track(clip)
+    voiced = voiced & speech_mask(times, clip)  # pYIN also "hears" hum outside speech (F5-TTS lead-ins)
     idx = np.flatnonzero(voiced)
     if len(idx) < 10:
         raise ValueError(f"too little voiced speech in {path}")
@@ -195,6 +196,8 @@ def test_trials(speakers: list[str], cache: ContourCache) -> list[dict]:
         for n in TEST_SENTENCES:
             cands = [("genuine", p) for p in [find_take(spk, n)] if p] + clone_takes(spk, n)
             for source, p in cands:
+                if librosa.get_duration(path=p) > MAX_CLIP_DURATION_S:
+                    continue  # same skip rule as preprocessing.discover_clips
                 try:
                     d = naturalness(cache(p), n, spk, speakers, cache)
                 except ValueError:

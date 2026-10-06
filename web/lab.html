@@ -1,0 +1,549 @@
+<meta charset="utf-8">
+<title>VoiceGuard Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: an instrument panel — clip picker rail on the left, the five pipeline stages stacked on the right, results table below. */
+:root {
+  --bg: #f4f5f6; --panel: #ffffff; --panel-2: #eef0f2; --ink: #15181d; --ink-2: #444b55; --muted: #6b7380;
+  --rule: #d9dde2; --band: #e6edf6; --zone: #e9f3ea;
+  --s-genuine: #2a78d6; --s-xtts: #eb6834; --s-f5: #1baf7a;
+  --good: #0ca30c; --bad: #d03b3b; --focus: #2a78d6;
+  --sans: "Instrument Sans", "Helvetica Neue", Arial, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #101215; --panel: #171a1e; --panel-2: #1e2227; --ink: #f1f3f5; --ink-2: #bcc3cc; --muted: #8d96a1;
+  --rule: #2b3037; --band: #1b2533; --zone: #17261a;
+  --s-genuine: #3987e5; --s-xtts: #d95926; --s-f5: #199e70; --focus: #3987e5; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #101215; --panel: #171a1e; --panel-2: #1e2227; --ink: #f1f3f5; --ink-2: #bcc3cc; --muted: #8d96a1;
+  --rule: #2b3037; --band: #1b2533; --zone: #17261a;
+  --s-genuine: #3987e5; --s-xtts: #d95926; --s-f5: #199e70; --focus: #3987e5; color-scheme: dark; }
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 15px; line-height: 1.5;
+  padding-inline: clamp(16px, 3vw, 40px); padding-block: 24px 48px; }
+h1, h2, h3 { text-wrap: balance; margin: 0; }
+.mono, .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.top { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 16px 32px;
+  max-width: 1320px; margin-inline: auto; padding-bottom: 20px; border-bottom: 1px solid var(--rule); }
+.brand h1 { font-size: clamp(26px, 3.2vw, 36px); font-weight: 700; letter-spacing: -0.01em; }
+.brand p { margin: 4px 0 0; color: var(--ink-2); max-width: 62ch; }
+.eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { display: flex; align-items: baseline; gap: 8px; padding: 6px 12px; border: 1px solid var(--rule);
+  border-radius: 999px; background: var(--panel); font-size: 13px; color: var(--ink-2); }
+.chip b { font-family: var(--mono); font-weight: 500; color: var(--ink); }
+
+.layout { display: grid; grid-template-columns: minmax(250px, 300px) minmax(0, 1fr); gap: 28px;
+  max-width: 1320px; margin: 24px auto 0; align-items: start; }
+@media (max-width: 860px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+
+.rail { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px); display: flex; flex-direction: column; gap: 16px; }
+@media (max-width: 860px) { .rail { position: static; } }
+.seg { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; background: var(--panel); }
+.seg button { border: 0; background: transparent; padding: 9px 4px; cursor: pointer; font-weight: 500; text-transform: capitalize; }
+.seg button + button { border-left: 1px solid var(--rule); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+
+.matrix { border: 1px solid var(--rule); border-radius: 10px; background: var(--panel); overflow: hidden; }
+.mrow { display: grid; grid-template-columns: minmax(0, 1fr) 52px 52px 52px; align-items: center; border-top: 1px solid var(--rule); }
+.mrow.head { border-top: 0; background: var(--panel-2); font-size: 12px; color: var(--muted); }
+.mrow.head span { padding: 7px 8px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.mrow.head span:first-child { text-align: left; align-items: start; }
+.mrow .sent { padding: 6px 8px; font-size: 13px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mrow .sent b { font-family: var(--mono); font-weight: 500; color: var(--ink); margin-right: 6px; }
+.swatch { width: 18px; height: 3px; border-radius: 2px; display: inline-block; }
+.cell { height: 34px; border: 0; border-left: 1px solid var(--rule); background: transparent; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 3px; }
+.cell:hover { background: var(--panel-2); }
+.cell[aria-pressed="true"] { background: var(--band); box-shadow: inset 0 0 0 2px var(--focus); }
+.cell:disabled { cursor: not-allowed; color: var(--muted); font-size: 12px; }
+.mark { width: 14px; height: 14px; }
+.mark.ok { color: var(--good); } .mark.no { color: var(--bad); }
+.legend-note { font-size: 12.5px; color: var(--muted); display: grid; gap: 4px; }
+.legend-note span { display: flex; align-items: center; gap: 6px; }
+
+.stage-list { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.clip-head { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: end; justify-content: space-between; }
+.clip-head h2 { font-size: clamp(20px, 2.4vw, 26px); font-weight: 600; }
+.clip-head .quote { margin: 6px 0 0; font-size: 16px; color: var(--ink-2); max-width: 60ch; }
+.verdicts { display: flex; flex-wrap: wrap; gap: 8px; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px 5px 9px; border-radius: 999px;
+  border: 1.5px solid var(--rule); background: var(--panel); font-size: 13.5px; font-weight: 500; }
+.pill.ok { border-color: var(--good); } .pill.no { border-color: var(--bad); }
+.pill .mark { width: 15px; height: 15px; }
+.pill small { color: var(--muted); font-weight: 400; }
+
+.stage { background: var(--panel); border: 1px solid var(--rule); border-radius: 14px; padding: 18px 20px 20px; min-width: 0; }
+.stage header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 4px; }
+.stage .step { font-family: var(--mono); font-size: 12px; color: var(--muted); border: 1px solid var(--rule); border-radius: 6px; padding: 1px 7px; }
+.stage h3 { font-size: 17px; font-weight: 600; }
+.stage .lede { margin: 2px 0 12px; color: var(--ink-2); font-size: 14px; max-width: 72ch; }
+.stage.lit .step { background: var(--ink); color: var(--bg); border-color: var(--ink); transition: background .3s, color .3s; }
+.chart { width: 100%; min-width: 0; position: relative; }
+.chart svg { display: block; overflow: visible; }
+.chart text { font-family: var(--mono); font-size: 11px; fill: var(--muted); }
+.chart .lab { fill: var(--ink-2); font-size: 11.5px; }
+.chart .flab { font-family: var(--sans); fill: var(--ink-2); font-size: 12.5px; }
+.chart .grp { font-family: var(--sans); fill: var(--ink); font-size: 12.5px; font-weight: 600; }
+.toggles { display: flex; flex-wrap: wrap; gap: 14px; margin: 0 0 10px; font-size: 13.5px; color: var(--ink-2); }
+.toggles label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.duo { display: grid; gap: 4px; }
+
+.comp { display: grid; grid-template-columns: minmax(110px, 160px) minmax(0, 1fr) minmax(120px, 170px); gap: 6px 14px; align-items: center; }
+.comp + .comp { margin-top: 10px; }
+.comp .name { font-weight: 500; }
+.comp .name small { display: block; font-family: var(--mono); font-size: 11.5px; color: var(--muted); font-weight: 400; }
+.track { position: relative; height: 14px; background: var(--panel-2); border-radius: 4px; }
+.track .fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; background: var(--ink-2); }
+.track .cap { position: absolute; top: -4px; bottom: -4px; width: 0; border-left: 2px dashed var(--muted); }
+.comp .val { font-family: var(--mono); font-size: 12.5px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.comp .val .tag { color: var(--ink); background: var(--panel-2); border-radius: 4px; padding: 0 5px; margin-left: 4px; }
+@media (max-width: 560px) { .comp { grid-template-columns: minmax(0, 1fr); } }
+
+.gauge { margin-top: 18px; }
+.gauge .track { height: 18px; }
+.gauge .zone { position: absolute; left: 0; top: 0; bottom: 0; background: var(--zone); border-radius: 4px 0 0 4px; }
+.gauge .thr { position: absolute; top: -6px; bottom: -6px; border-left: 2px solid var(--ink); }
+.gauge .dot { position: absolute; top: 50%; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%; border: 2px solid var(--panel); }
+.gauge .tick { position: absolute; top: 22px; width: 0; height: 8px; border-left: 2px solid; }
+.gauge .scale { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 6px; }
+.gauge .caption { margin-top: 26px; font-size: 13.5px; color: var(--ink-2); display: flex; flex-wrap: wrap; gap: 6px 18px; }
+.gauge .caption span { display: inline-flex; align-items: center; gap: 6px; }
+.key-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.key-bar { width: 2px; height: 12px; display: inline-block; background: var(--ink); }
+
+.results { max-width: 1320px; margin: 36px auto 0; }
+.results h2 { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
+.results p { color: var(--ink-2); margin: 0 0 12px; max-width: 72ch; }
+.tablewrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 12px; background: var(--panel); }
+table { border-collapse: collapse; width: 100%; min-width: 620px; font-size: 14px; }
+th, td { padding: 10px 14px; text-align: right; border-top: 1px solid var(--rule); }
+th { font-weight: 500; color: var(--muted); font-size: 12.5px; border-top: 0; background: var(--panel-2); }
+td:first-child, th:first-child { text-align: left; }
+td.num { font-family: var(--mono); }
+.foot { max-width: 1320px; margin: 24px auto 0; font-size: 12.5px; color: var(--muted); }
+
+#tip { position: fixed; pointer-events: none; z-index: 10; background: var(--panel); color: var(--ink); border: 1px solid var(--rule);
+  border-radius: 8px; padding: 8px 10px; font-size: 12.5px; box-shadow: 0 6px 20px rgb(0 0 0 / .14); max-width: 260px; }
+#tip .t { font-family: var(--mono); color: var(--muted); font-size: 11.5px; margin-bottom: 3px; }
+#tip .r { display: flex; align-items: center; gap: 6px; } #tip .r b { font-family: var(--mono); font-weight: 500; margin-left: auto; padding-left: 10px; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .draw { stroke-dasharray: var(--len); stroke-dashoffset: var(--len); animation: draw .9s ease-out forwards; }
+  @keyframes draw { to { stroke-dashoffset: 0; } }
+}
+</style>
+
+<header class="top">
+  <div class="brand">
+    <div class="eyebrow">Prosodic fingerprinting · held-out sentences s21–s30</div>
+    <h1>VoiceGuard Lab</h1>
+    <p>Pick a recording and follow it through the pipeline that decides whether it is really the speaker or an AI voice clone.</p>
+  </div>
+  <div class="chips" id="chips"></div>
+</header>
+
+<div class="layout">
+  <nav class="rail" aria-label="Choose a clip">
+    <div class="seg" id="speakers" role="group" aria-label="Speaker"></div>
+    <div class="matrix" id="matrix"></div>
+    <div class="legend-note">
+      <span>Each cell shows two checks: fingerprint, then naturalness.</span>
+      <span><svg class="mark ok" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-ok"/></svg>accepted as genuine
+        <svg class="mark no" viewBox="0 0 16 16" aria-hidden="true" style="margin-left:8px"><use href="#i-no"/></svg>flagged as clone</span>
+    </div>
+  </nav>
+
+  <main class="stage-list" id="stages">
+    <div class="clip-head">
+      <div>
+        <div class="eyebrow" id="clip-eyebrow"></div>
+        <h2 id="clip-title"></h2>
+        <p class="quote" id="clip-quote"></p>
+      </div>
+      <div class="verdicts" id="verdicts"></div>
+    </div>
+
+    <section class="stage" data-step="1">
+      <header><span class="step">1</span><h3>Speech detection</h3></header>
+      <p class="lede">Voice-activity detection splits the recording into speech and silence. Pauses inside the sentence are kept: how often and how long someone pauses is part of their habit.</p>
+      <div class="chart" id="c-vad"></div>
+    </section>
+
+    <section class="stage" data-step="2">
+      <header><span class="step">2</span><h3>Pitch and loudness contours</h3></header>
+      <p class="lede" id="contour-lede"></p>
+      <div class="toggles" id="overlays"></div>
+      <div class="duo">
+        <div class="chart" id="c-pitch"></div>
+        <div class="chart" id="c-loud"></div>
+      </div>
+    </section>
+
+    <section class="stage" data-step="3">
+      <header><span class="step">3</span><h3>Features against the speaker's fingerprint</h3></header>
+      <p class="lede">Each dot is one feature of this clip, placed by how many standard deviations it sits from the speaker's 20 enrollment clips. The shaded band is their typical range (±1 SD).</p>
+      <div class="chart" id="c-feat"></div>
+    </section>
+
+    <section class="stage" data-step="4">
+      <header><span class="step">4</span><h3>Weighted blend</h3></header>
+      <p class="lede">Each component's distance is averaged with a fixed weight. Timbre, voice quality and pitch level are capped at 2 SD, so prosody decides the verdict.</p>
+      <div id="c-blend"></div>
+    </section>
+
+    <section class="stage" data-step="5">
+      <header><span class="step">5</span><h3>Naturalness check</h3></header>
+      <p class="lede">The contours are aligned with the other speakers' readings of the same sentence. A real person reads it within the normal human spread; a clone that phrases it oddly lands further out. With only two other readers per sentence this check is weak on its own (ROC-AUC about 0.67).</p>
+      <div id="c-nat"></div>
+    </section>
+  </main>
+</div>
+
+<section class="results" aria-labelledby="res-h">
+  <h2 id="res-h">Across all held-out clips</h2>
+  <p>ROC-AUC and the share of clones caught at the deployed threshold, enrolling on sentences s01–s20 and testing on s21–s30 (30 genuine, 30 F5-TTS and 29 XTTS-v2 clips).</p>
+  <div class="tablewrap"><table id="results"></table></div>
+</section>
+<p class="foot">This page shows numbers derived from the recordings (contours, features, scores) and contains no audio. Speakers: krishiv, mary, raghav. Clones made with XTTS-v2 and F5-TTS from each speaker's enrollment audio only.</p>
+
+<div id="tip" hidden></div>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-ok" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="currentColor"/><path d="M4.6 8.3l2.2 2.2 4.6-4.8" fill="none" stroke="var(--panel)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-no" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="currentColor"/><path d="M5.4 5.4l5.2 5.2M10.6 5.4l-5.2 5.2" fill="none" stroke="var(--panel)" stroke-width="1.9" stroke-linecap="round"/></symbol>
+</svg>
+
+<script src="lab_data.js"></script>
+<script>
+(() => {
+const D = window.VG_DATA;
+const NS = "http://www.w3.org/2000/svg";
+const SOURCES = ["genuine", "xtts", "f5tts"];
+const SRC = {
+  genuine: { name: "Genuine", long: "Genuine recording", color: "var(--s-genuine)" },
+  xtts: { name: "XTTS-v2", long: "XTTS-v2 clone", color: "var(--s-xtts)" },
+  f5tts: { name: "F5-TTS", long: "F5-TTS clone", color: "var(--s-f5)" },
+};
+const COMP = {
+  prosody: "Prosody", voice_quality: "Voice quality", timbre: "Timbre", pitch_register: "Pitch level",
+};
+const byId = new Map(D.clips.map(c => [c.id, c]));
+const idOf = (spk, src, n) => `${spk}-${src}-s${String(n).padStart(2, "0")}`;
+const SENTS = Object.keys(D.sentences).map(Number).sort((a, b) => a - b);
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const fmt = (v, d = 2) => v == null ? "–" : (v < 0 ? "−" : "") + Math.abs(v).toFixed(d);
+const pct = v => v == null ? "–" : Math.round(v * 100) + "%";
+
+const state = { speaker: "mary", sentence: 25, source: "f5tts", overlay: new Set(["genuine"]) };
+try { const h = location.hash.slice(1); if (byId.has(h)) { const c = byId.get(h); Object.assign(state, { speaker: c.speaker, sentence: c.sentence, source: c.source }); } } catch (e) {}
+
+function el(tag, attrs = {}, parent, text) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (text != null) e.textContent = text;
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function h(tag, cls, parent, html) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (html != null) e.innerHTML = html;
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function ticks(lo, hi, n = 5) {
+  const span = hi - lo || 1, raw = span / n, mag = 10 ** Math.floor(Math.log10(raw)), e = raw / mag;
+  const step = (e >= 7.5 ? 10 : e >= 3.5 ? 5 : e >= 1.5 ? 2 : 1) * mag, out = [];
+  for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(+v.toFixed(6));
+  return out;
+}
+const mark = ok => `<svg class="mark ${ok ? "ok" : "no"}" viewBox="0 0 16 16" aria-hidden="true"><use href="#${ok ? "i-ok" : "i-no"}"/></svg>`;
+
+/* tooltip */
+const tip = document.getElementById("tip");
+function showTip(x, y, html) {
+  tip.innerHTML = html; tip.hidden = false;
+  const r = tip.getBoundingClientRect();
+  let left = x + 14, top = y + 14;
+  if (left + r.width > innerWidth - 8) left = x - r.width - 14;
+  if (top + r.height > innerHeight - 8) top = y - r.height - 14;
+  tip.style.left = Math.max(8, left) + "px"; tip.style.top = Math.max(8, top) + "px";
+}
+const hideTip = () => { tip.hidden = true; };
+
+/* header chips */
+(function chips() {
+  const s = D.summary, b = s["blend (default, capped)"];
+  const host = document.getElementById("chips");
+  [["F5-TTS clones caught", pct(b.f5tts.impostor_reject)], ["XTTS-v2 clones caught", pct(b.xtts.impostor_reject)],
+   ["Genuine accepted", pct(b.f5tts.genuine_accept)], ["ROC-AUC, F5-TTS / XTTS-v2", fmt(b.f5tts.roc_auc, 3) + " / " + fmt(b.xtts.roc_auc, 3)]]
+    .forEach(([k, v]) => h("span", "chip", host, `${k} <b>${v}</b>`));
+})();
+
+/* rail */
+function renderRail() {
+  const seg = document.getElementById("speakers"); seg.innerHTML = "";
+  D.speakers.forEach(spk => {
+    const b = h("button", "", seg, spk); b.type = "button";
+    b.setAttribute("aria-pressed", spk === state.speaker);
+    b.onclick = () => { state.speaker = spk; select(); };
+  });
+  const m = document.getElementById("matrix"); m.innerHTML = "";
+  const head = h("div", "mrow head", m);
+  h("span", "", head, "Sentence");
+  SOURCES.forEach(s => h("span", "", head, `<i class="swatch" style="background:${SRC[s].color}"></i>${SRC[s].name}`));
+  SENTS.forEach(n => {
+    const row = h("div", "mrow", m);
+    const t = h("span", "sent", row, `<b>s${n}</b>${D.sentences[n]}`); t.title = D.sentences[n];
+    SOURCES.forEach(src => {
+      const c = byId.get(idOf(state.speaker, src, n));
+      const b = h("button", "cell", row); b.type = "button";
+      if (!c) { b.disabled = true; b.textContent = "–"; b.title = "Excluded: the cloner produced a 21-second babble"; return; }
+      const fp = c.verdict === "genuine", nat = c.naturalness.verdict === "genuine";
+      b.innerHTML = mark(fp) + mark(nat);
+      b.setAttribute("aria-label", `s${n} ${SRC[src].long}: fingerprint ${fp ? "accepted" : "flagged"}, naturalness ${nat ? "accepted" : "flagged"}`);
+      b.setAttribute("aria-pressed", state.sentence === n && state.source === src);
+      b.onclick = () => { state.sentence = n; state.source = src; select(); };
+    });
+  });
+}
+
+/* stage 1: speech detection */
+function renderVAD(c) {
+  const host = document.getElementById("c-vad"); host.innerHTML = "";
+  const W = host.clientWidth, H = 74, L = 8, R = 8, T = 8, B = 22;
+  const svg = el("svg", { width: W, height: H, viewBox: `0 0 ${W} ${H}`, role: "img",
+    "aria-label": `${c.speech.length} speech segments over ${c.duration} seconds, ${c.pauses} internal pauses` }, host);
+  const x = t => L + (t / c.duration) * (W - L - R);
+  el("rect", { x: L, y: T, width: W - L - R, height: 34, rx: 4, style: "fill:var(--panel-2)" }, svg);
+  c.speech.forEach(([a, b]) => {
+    const r = el("rect", { x: x(a), y: T, width: Math.max(1.5, x(b) - x(a)), height: 34, rx: 3, style: `fill:${SRC[c.source].color}` }, svg);
+    r.addEventListener("pointermove", e => showTip(e.clientX, e.clientY, `<div class="t">speech</div>${a.toFixed(2)} – ${b.toFixed(2)} s`));
+    r.addEventListener("pointerleave", hideTip);
+  });
+  for (let i = 1; i < c.speech.length; i++) {
+    const a = c.speech[i - 1][1], b = c.speech[i][0];
+    if (b - a >= 0.05) {
+      const g = el("rect", { x: x(a), y: T - 2, width: Math.max(3, x(b) - x(a)), height: 38, style: "fill:transparent" }, svg);
+      g.addEventListener("pointermove", e => showTip(e.clientX, e.clientY, `<div class="t">pause</div>${((b - a) * 1000).toFixed(0)} ms`));
+      g.addEventListener("pointerleave", hideTip);
+    }
+  }
+  ticks(0, c.duration, Math.max(3, Math.floor(W / 110))).forEach(t => el("text", { x: x(t), y: H - 4, "text-anchor": "middle" }, svg, t + " s"));
+  const leg = h("div", "toggles", host);
+  leg.style.marginTop = "6px";
+  leg.innerHTML = `<span><i class="swatch" style="background:${SRC[c.source].color};height:10px"></i>speech</span>
+    <span><i class="swatch" style="background:var(--panel-2);height:10px;border:1px solid var(--rule)"></i>silence</span>
+    <span class="num">${c.duration.toFixed(2)} s · ${c.pauses} internal pause${c.pauses === 1 ? "" : "s"}</span>`;
+}
+
+/* stage 2: contours */
+function nearest(ts, t) {
+  let lo = 0, hi = ts.length - 1;
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; ts[m] < t ? lo = m : hi = m; }
+  return Math.abs(ts[lo] - t) < Math.abs(ts[hi] - t) ? lo : hi;
+}
+function lineChart(hostId, key, series, opt) {
+  const host = document.getElementById(hostId); host.innerHTML = "";
+  const W = host.clientWidth, H = opt.height, L = 46, R = 78, T = 10, B = 24;
+  const tmax = Math.max(...series.map(s => s.clip.t[s.clip.t.length - 1]));
+  let vals = series.flatMap(s => s.clip[key].filter(v => v != null));
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  if (opt.minSpan) { const mid = (lo + hi) / 2; lo = Math.min(lo, mid - opt.minSpan / 2); hi = Math.max(hi, mid + opt.minSpan / 2); }
+  const pad = (hi - lo) * 0.08; lo -= pad; hi += pad;
+  const x = t => L + (t / tmax) * (W - L - R), y = v => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
+  const svg = el("svg", { width: W, height: H, viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": opt.aria }, host);
+  const prim = series.find(s => s.primary).clip;
+  prim.speech.forEach(([a, b]) => el("rect", { x: x(a), y: T, width: Math.max(0, x(Math.min(b, tmax)) - x(a)), height: H - T - B, style: "fill:var(--band)" }, svg));
+  ticks(lo, hi, 4).forEach(v => {
+    el("line", { x1: L, x2: W - R, y1: y(v), y2: y(v), style: `stroke:var(--rule);stroke-width:1${v === 0 ? "" : ";stroke-dasharray:2 3"}` }, svg);
+    el("text", { x: L - 6, y: y(v) + 4, "text-anchor": "end" }, svg, fmt(v, 0));
+  });
+  el("text", { x: 2, y: T + 2, "dominant-baseline": "hanging" }, svg, opt.unit);
+  ticks(0, tmax, Math.max(3, Math.floor(W / 110))).forEach(t => el("text", { x: x(t), y: H - 6, "text-anchor": "middle" }, svg, t + " s"));
+  const ends = [];
+  [...series].sort((a, b) => a.primary - b.primary).forEach(s => {
+    let d = "", pen = false, last = null;
+    s.clip[key].forEach((v, i) => {
+      if (v == null) { pen = false; return; }
+      d += (pen ? "L" : "M") + x(s.clip.t[i]).toFixed(1) + " " + y(v).toFixed(1); pen = true; last = [s.clip.t[i], v];
+    });
+    const p = el("path", { d, fill: "none", style: `stroke:${SRC[s.src].color};stroke-width:${s.primary ? 2.25 : 1.5};stroke-linejoin:round;stroke-linecap:round;opacity:${s.primary ? 1 : 0.75}` }, svg);
+    if (!reduced && s.primary) { const len = p.getTotalLength(); p.style.setProperty("--len", len); p.classList.add("draw"); }
+    if (last) ends.push({ src: s.src, y: y(last[1]), x: x(last[0]) });
+  });
+  ends.sort((a, b) => a.y - b.y);
+  for (let i = 1; i < ends.length; i++) if (ends[i].y - ends[i - 1].y < 14) ends[i].y = ends[i - 1].y + 14;
+  ends.forEach(e => {
+    el("circle", { cx: e.x, cy: e.y, r: 3, style: `fill:${SRC[e.src].color}` }, svg);
+    el("text", { x: W - R + 8, y: e.y + 4, class: "lab" }, svg, SRC[e.src].name);
+  });
+  const cross = el("line", { y1: T, y2: H - B, style: "stroke:var(--ink-2);stroke-width:1;opacity:0", "pointer-events": "none" }, svg);
+  const dots = series.map(s => el("circle", { r: 4, style: `fill:${SRC[s.src].color};stroke:var(--panel);stroke-width:2;opacity:0`, "pointer-events": "none" }, svg));
+  const hit = el("rect", { x: L, y: T, width: W - L - R, height: H - T - B, style: "fill:transparent" }, svg);
+  hit.addEventListener("pointermove", e => {
+    const rect = svg.getBoundingClientRect(), t = Math.max(0, Math.min(tmax, ((e.clientX - rect.left) - L) / (W - L - R) * tmax));
+    cross.setAttribute("x1", x(t)); cross.setAttribute("x2", x(t)); cross.style.opacity = 1;
+    let rows = "";
+    series.forEach((s, i) => {
+      const k = nearest(s.clip.t, t), v = Math.abs(s.clip.t[k] - t) < 0.05 ? s.clip[key][k] : null;
+      if (v == null) { dots[i].style.opacity = 0; } else { dots[i].setAttribute("cx", x(s.clip.t[k])); dots[i].setAttribute("cy", y(v)); dots[i].style.opacity = 1; }
+      rows += `<div class="r"><i class="swatch" style="background:${SRC[s.src].color}"></i>${SRC[s.src].name}<b>${v == null ? "unvoiced" : fmt(v, 1) + " " + opt.short}</b></div>`;
+    });
+    showTip(e.clientX, e.clientY, `<div class="t">${t.toFixed(2)} s</div>${rows}`);
+  });
+  hit.addEventListener("pointerleave", () => { hideTip(); cross.style.opacity = 0; dots.forEach(d => d.style.opacity = 0); });
+}
+function renderContours(c) {
+  const lede = document.getElementById("contour-lede");
+  lede.textContent = c.source === "genuine"
+    ? "Pitch in semitones against the speaker's usual pitch, and loudness against this clip's own level. Turn on the clones of this sentence to see how they move differently."
+    : "Pitch in semitones against the speaker's usual pitch, and loudness against this clip's own level. The real reading of the same sentence is overlaid for comparison.";
+  const box = document.getElementById("overlays"); box.innerHTML = "";
+  SOURCES.filter(s => s !== c.source).forEach(src => {
+    const other = byId.get(idOf(c.speaker, src, c.sentence));
+    const lab = h("label", "", box);
+    const cb = h("input", "", lab); cb.type = "checkbox"; cb.id = "ov-" + src;
+    cb.checked = state.overlay.has(src) && !!other; cb.disabled = !other;
+    lab.insertAdjacentHTML("beforeend", `<i class="swatch" style="background:${SRC[src].color}"></i>Show ${SRC[src].long.toLowerCase()}${other ? "" : " (excluded)"}`);
+    cb.onchange = () => { cb.checked ? state.overlay.add(src) : state.overlay.delete(src); drawContours(c); };
+  });
+  drawContours(c);
+}
+function drawContours(c) {
+  const series = [{ clip: c, src: c.source, primary: true }];
+  SOURCES.filter(s => s !== c.source && state.overlay.has(s)).forEach(src => {
+    const o = byId.get(idOf(c.speaker, src, c.sentence)); if (o) series.push({ clip: o, src, primary: false });
+  });
+  lineChart("c-pitch", "pitch", series, { height: 220, unit: "st", short: "st", minSpan: 12, aria: "Pitch contour in semitones over time" });
+  lineChart("c-loud", "loud", series, { height: 150, unit: "dB", short: "dB", minSpan: 20, aria: "Loudness contour in decibels over time" });
+}
+
+/* stage 3: features vs fingerprint */
+function renderFeatures(c) {
+  const host = document.getElementById("c-feat"); host.innerHTML = "";
+  const W = host.clientWidth, LW = Math.min(196, Math.max(130, W * 0.36)), R = 16, ROW = 25, GH = 30, ZMAX = 5;
+  const groups = [["prosody", "Prosody"], ["voice_quality", "Voice quality"], ["pitch_register", "Pitch level"]];
+  const H = groups.reduce((a, [g]) => a + GH + c.features.filter(f => f.group === g).length * ROW, 0) + 30;
+  const svg = el("svg", { width: W, height: H, viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Feature z-scores against the speaker's fingerprint" }, host);
+  const x = z => LW + ((Math.max(-ZMAX, Math.min(ZMAX, z)) + ZMAX) / (2 * ZMAX)) * (W - LW - R);
+  let y0 = 8;
+  const top = y0, color = SRC[c.source].color;
+  groups.forEach(([g, label]) => {
+    const fs = c.features.filter(f => f.group === g);
+    const w = D.weights[g];
+    el("text", { x: 0, y: y0 + 18, class: "grp" }, svg, label);
+    el("text", { x: 0 + label.length * 7.6 + 8, y: y0 + 18 }, svg, `weight ${w.weight.toFixed(2)}`);
+    y0 += GH;
+    fs.forEach(f => {
+      const cy = y0 + ROW / 2;
+      el("rect", { x: x(-1), y: y0 + 3, width: x(1) - x(-1), height: ROW - 6, rx: 3, style: "fill:var(--band)" }, svg);
+      el("line", { x1: LW, x2: W - R, y1: cy, y2: cy, style: "stroke:var(--rule);stroke-width:1" }, svg);
+      el("text", { x: LW - 10, y: cy + 4, "text-anchor": "end", class: "flab" }, svg, f.label);
+      if (f.z != null) {
+        const clipped = Math.abs(f.z) > ZMAX;
+        el("line", { x1: x(0), x2: x(f.z), y1: cy, y2: cy, style: `stroke:${color};stroke-width:2;opacity:.45` }, svg);
+        const d = clipped
+          ? el("path", { d: f.z > 0 ? `M${x(f.z) - 6} ${cy - 6}L${x(f.z) + 4} ${cy}L${x(f.z) - 6} ${cy + 6}Z` : `M${x(f.z) + 6} ${cy - 6}L${x(f.z) - 4} ${cy}L${x(f.z) + 6} ${cy + 6}Z`, style: `fill:${color}` }, svg)
+          : el("circle", { cx: x(f.z), cy, r: 5, style: `fill:${color};stroke:var(--panel);stroke-width:2` }, svg);
+        const hit = el("rect", { x: LW, y: y0, width: W - LW - R, height: ROW, style: "fill:transparent" }, svg);
+        hit.addEventListener("pointermove", e => showTip(e.clientX, e.clientY,
+          `<div class="t">${f.label}</div><div class="r">This clip<b>${fmt(f.value, 3)}</b></div><div class="r">Fingerprint<b>${fmt(f.mean, 3)} ± ${fmt(f.sd, 3)}</b></div><div class="r">Distance<b>${fmt(f.z, 1)} SD</b></div>`));
+        hit.addEventListener("pointerleave", hideTip);
+      } else {
+        el("text", { x: x(0), y: cy + 4, "text-anchor": "middle" }, svg, "not measurable");
+      }
+      y0 += ROW;
+    });
+  });
+  [-4, -2, 0, 2, 4].forEach(z => {
+    el("line", { x1: x(z), x2: x(z), y1: top + GH - 4, y2: y0, style: `stroke:var(--rule);stroke-width:1${z ? ";stroke-dasharray:2 3" : ""}` }, svg);
+    el("text", { x: x(z), y: y0 + 16, "text-anchor": "middle" }, svg, (z > 0 ? "+" : z < 0 ? "−" : "") + Math.abs(z) + " SD");
+  });
+}
+
+/* stage 4: blend */
+function gauge(host, { value, thr, max, color, refs, labels }) {
+  const g = h("div", "gauge", host), tr = h("div", "track", g);
+  const px = v => (Math.min(v, max) / max * 100) + "%";
+  h("div", "zone", tr).style.width = px(thr);
+  h("div", "thr", tr).style.left = px(thr);
+  (refs || []).forEach(r => { const t = h("div", "tick", tr); t.style.left = px(r.v); t.style.borderColor = r.color; t.title = r.title; });
+  const d = h("div", "dot", tr); d.style.left = px(value); d.style.background = color;
+  const sc = h("div", "scale", g); ticks(0, max, 4).forEach(t => h("span", "", sc, t.toFixed(1)));
+  h("div", "caption", g, labels);
+}
+function renderBlend(c) {
+  const host = document.getElementById("c-blend"); host.innerHTML = "";
+  const SMAX = 6;
+  c.components.forEach(k => {
+    const row = h("div", "comp", host);
+    h("div", "name", row, `${COMP[k.name]}<small>weight ${k.weight.toFixed(2)}${k.cap ? " · cap " + k.cap + " SD" : ""}${k.name === "timbre" ? " · 26 MFCC stats" : ""}</small>`);
+    const tr = h("div", "track", row);
+    const f = h("div", "fill", tr); f.style.width = (Math.min(k.distance, SMAX) / SMAX * 100) + "%";
+    if (k.cap) { const cp = h("div", "cap", tr); cp.style.left = (k.cap / SMAX * 100) + "%"; cp.title = "cap"; }
+    h("div", "val", row, `${k.distance.toFixed(2)} SD · ${Math.round(k.share * 100)}%${k.capped ? '<span class="tag">capped</span>' : ""}`);
+  });
+  h("div", "toggles", host, `<span class="num" style="margin-top:12px">Bars run 0–${SMAX} SD; dashed lines mark the caps. Percentages are each component's share of the final score.</span>`);
+  const max = Math.max(2.5, c.distance * 1.15, c.threshold * 1.6);
+  const ok = c.verdict === "genuine";
+  gauge(host, { value: c.distance, thr: c.threshold, max, color: SRC[c.source].color,
+    labels: `<span><i class="key-dot" style="background:${SRC[c.source].color}"></i>score ${c.distance.toFixed(2)}</span>
+      <span><i class="key-bar"></i>accept threshold ${c.threshold.toFixed(2)}</span>
+      <span>${mark(ok)}${ok ? "inside the speaker's range: accepted" : "outside the speaker's range: flagged"}</span>` });
+}
+
+/* stage 5: naturalness */
+function renderNat(c) {
+  const host = document.getElementById("c-nat"); host.innerHTML = "";
+  const mean = src => { const v = D.clips.filter(k => k.speaker === c.speaker && k.source === src).map(k => k.naturalness.distance); return v.reduce((a, b) => a + b, 0) / v.length; };
+  const refs = SOURCES.map(s => ({ v: mean(s), color: SRC[s].color, title: `${SRC[s].name} average for ${c.speaker}` }));
+  const n = c.naturalness, ok = n.verdict === "genuine";
+  const max = Math.max(4, n.distance * 1.15, ...refs.map(r => r.v * 1.1));
+  gauge(host, { value: n.distance, thr: n.threshold, max, color: SRC[c.source].color, refs,
+    labels: `<span><i class="key-dot" style="background:${SRC[c.source].color}"></i>this clip ${n.distance.toFixed(2)}</span>
+      <span><i class="key-bar"></i>threshold ${n.threshold.toFixed(2)}</span>
+      ${SOURCES.map(s => `<span><i class="key-bar" style="background:${SRC[s].color}"></i>${SRC[s].name} average ${mean(s).toFixed(2)}</span>`).join("")}
+      <span>${mark(ok)}${ok ? "read like a person: accepted" : "unnatural reading: flagged"}</span>` });
+}
+
+/* results table */
+(function results() {
+  const s = D.summary, t = document.getElementById("results");
+  const rows = [["Weighted blend (deployed)", s["blend (default, capped)"]], ["Prosody only", s["prosody only"]],
+    ["Pitch level + timbre only", s["register + timbre"]], ["Naturalness check", s.naturalness]];
+  t.innerHTML = `<thead><tr><th>Check</th><th>F5-TTS ROC-AUC</th><th>F5-TTS caught</th><th>XTTS-v2 ROC-AUC</th><th>XTTS-v2 caught</th><th>Genuine accepted</th></tr></thead>` +
+    "<tbody>" + rows.map(([k, v]) => `<tr><td>${k}</td><td class="num">${fmt(v.f5tts.roc_auc, 3)}</td><td class="num">${pct(v.f5tts.impostor_reject)}</td><td class="num">${fmt(v.xtts.roc_auc, 3)}</td><td class="num">${pct(v.xtts.impostor_reject)}</td><td class="num">${pct(v.f5tts.genuine_accept)}</td></tr>`).join("") + "</tbody>";
+})();
+
+/* selection */
+function select() {
+  let c = byId.get(idOf(state.speaker, state.source, state.sentence));
+  if (!c) { state.source = "genuine"; c = byId.get(idOf(state.speaker, "genuine", state.sentence)); }
+  try { history.replaceState(null, "", "#" + c.id); } catch (e) {}
+  renderRail();
+  document.getElementById("clip-eyebrow").textContent = `${c.speaker} · sentence s${c.sentence}`;
+  document.getElementById("clip-title").innerHTML = `<i class="swatch" style="background:${SRC[c.source].color};width:26px;height:4px;vertical-align:middle;margin-right:10px"></i>${SRC[c.source].long}`;
+  document.getElementById("clip-quote").textContent = "“" + D.sentences[c.sentence] + "”";
+  const fp = c.verdict === "genuine", nat = c.naturalness.verdict === "genuine";
+  document.getElementById("verdicts").innerHTML =
+    `<span class="pill ${fp ? "ok" : "no"}">${mark(fp)}Fingerprint: ${fp ? "genuine" : "clone"} <small>${c.distance.toFixed(2)} / ${c.threshold.toFixed(2)}</small></span>` +
+    `<span class="pill ${nat ? "ok" : "no"}">${mark(nat)}Naturalness: ${nat ? "genuine" : "clone"} <small>${c.naturalness.distance.toFixed(2)} / ${c.naturalness.threshold.toFixed(2)}</small></span>`;
+  draw(c);
+  if (!reduced) {
+    document.querySelectorAll(".stage").forEach((s, i) => { s.classList.remove("lit"); setTimeout(() => s.classList.add("lit"), 120 * i); });
+  } else document.querySelectorAll(".stage").forEach(s => s.classList.add("lit"));
+}
+function draw(c) { renderVAD(c); renderContours(c); renderFeatures(c); renderBlend(c); renderNat(c); }
+
+let rt; new ResizeObserver(() => { clearTimeout(rt); rt = setTimeout(() => draw(byId.get(idOf(state.speaker, state.source, state.sentence)) || byId.get(idOf(state.speaker, "genuine", state.sentence))), 120); })
+  .observe(document.getElementById("stages"));
+select();
+})();
+</script>

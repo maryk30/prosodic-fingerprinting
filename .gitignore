@@ -30,3 +30,4 @@ data/features/fingerprint_visuals/
 # OS
 .DS_Store
 .venv-f5/
+web/lab_data.js
